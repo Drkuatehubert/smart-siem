@@ -1,0 +1,12 @@
+id: privilege-escalation
+nom: "Elevation de privileges (MITRE T1068)"
+description: "Commande sudo inhabituelle ou acces root detecte"
+type: seuil
+condition:
+  field: "normalized_fields.process"
+  value: "sudo"
+  threshold: 3
+fenetre_temporelle_s: 60
+mitre_tactic: "T1068 - Exploitation for Privilege Escalation"
+niveau_alerte_genere: CRITICAL
+active: true

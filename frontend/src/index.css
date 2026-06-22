@@ -1,0 +1,10 @@
+:root {
+  --color-bg: #0d1117; --color-surface: #161b22; --color-border: #30363d;
+  --color-primary: #58a6ff; --color-success: #3fb950; --color-warning: #d29922;
+  --color-danger: #f85149; --color-critical: #ff4444;
+  --color-text: #e6edf3; --color-muted: #8b949e;
+  --font: "Inter", system-ui, sans-serif; --radius: 8px;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: var(--color-bg); color: var(--color-text); font-family: var(--font); }
+a { color: var(--color-primary); text-decoration: none; }

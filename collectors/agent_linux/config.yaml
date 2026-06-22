@@ -1,0 +1,5 @@
+SIEM_API_URL: http://backend:8000
+SIEM_TOKEN: ""
+watch_files:
+  - /var/log/auth.log
+  - /var/log/syslog

@@ -1,0 +1,14 @@
+id: lateral-movement
+nom: "Mouvement lateral (MITRE T1021)"
+description: "Connexion SMB ou RDP depuis une machine inhabituelle"
+type: sequentielle
+condition:
+  steps:
+    - field: "log_type"
+      value: "reseau"
+    - field: "log_type"
+      value: "auth"
+fenetre_temporelle_s: 120
+mitre_tactic: "T1021 - Remote Services"
+niveau_alerte_genere: HIGH
+active: true

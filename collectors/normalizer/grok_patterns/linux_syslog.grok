@@ -1,0 +1,3 @@
+# Linux Syslog — RFC 3164
+SYSLOG_LINE %{SYSLOGTIMESTAMP:timestamp} %{SYSLOGHOST:host} %{DATA:process}(?:\[%{POSINT:pid}\])?: %{GREEDYDATA:message}
+SSH_AUTH %{SYSLOG_LINE} (Accepted|Failed) %{WORD:auth_method} for %{USER:username} from %{IP:source_ip}

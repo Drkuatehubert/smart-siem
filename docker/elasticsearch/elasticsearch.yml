@@ -1,0 +1,13 @@
+# elasticsearch.yml — Configuration Elasticsearch 8.x
+cluster.name: smart-siem
+node.name: siem-node-1
+network.host: 0.0.0.0
+http.port: 9200
+discovery.type: single-node
+
+# Sécurité xpack
+xpack.security.enabled: true
+xpack.security.http.ssl.enabled: false
+
+# Performance
+bootstrap.memory_lock: false

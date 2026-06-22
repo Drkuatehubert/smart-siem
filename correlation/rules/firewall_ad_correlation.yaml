@@ -1,0 +1,14 @@
+id: firewall-ad-correlation
+nom: "Correlation Firewall + AD (multi-sources)"
+description: "Blocage firewall suivi d une tentative auth AD depuis la meme IP"
+type: sequentielle
+condition:
+  steps:
+    - field: "log_type"
+      value: "reseau"
+    - field: "log_type"
+      value: "auth"
+fenetre_temporelle_s: 60
+mitre_tactic: "T1078 - Valid Accounts"
+niveau_alerte_genere: HIGH
+active: true

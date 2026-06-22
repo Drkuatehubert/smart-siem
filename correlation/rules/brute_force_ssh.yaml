@@ -1,0 +1,12 @@
+id: brute-force-ssh
+nom: "Brute Force SSH (MITRE T1110)"
+description: "5 echecs d authentification SSH en moins de 30 secondes depuis la meme IP"
+type: seuil
+condition:
+  field: "normalized_fields.message"
+  value: "Failed password"
+  threshold: 5
+fenetre_temporelle_s: 30
+mitre_tactic: "T1110 - Brute Force"
+niveau_alerte_genere: HIGH
+active: true

@@ -1,0 +1,21 @@
+version: "3.9"
+# Override dev : hot-reload backend, ports exposés, pas de Nginx
+services:
+  backend:
+    volumes:
+      - ./backend:/app
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    environment:
+      - PYTHONDONTWRITEBYTECODE=1
+  frontend:
+    volumes:
+      - ./frontend/src:/app/src
+    ports:
+      - "5173:5173"
+    command: npm run dev -- --host
+  elasticsearch:
+    ports:
+      - "9200:9200"
+  redis:
+    ports:
+      - "6379:6379"
