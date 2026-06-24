@@ -1,0 +1,20 @@
+# Environnement
+.env
+venv/
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+
+# Certificats
+certs/
+*.key
+*.crt
+*.pem
+
+# Docker
+*.log
+
+# IDE
+.vscode/
+.idea/
