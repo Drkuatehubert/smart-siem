@@ -1,6 +1,6 @@
 id: data-exfiltration
-nom: "Exfiltration de donnees (MITRE T1041)"
-description: "Volume de donnees anormalement eleve sortant du reseau"
+nom: "Exfiltration de données (MITRE T1041)"
+description: "Volume de données anormalement élevé sortant du réseau"
 type: seuil
 condition:
   field: "log_type"
@@ -8,5 +8,8 @@ condition:
   threshold: 50
 fenetre_temporelle_s: 300
 mitre_tactic: "T1041 - Exfiltration Over C2 Channel"
+mitre_technique_id: "T1041"
 niveau_alerte_genere: CRITICAL
+cve_references: []
+kill_chain_phase: "exfiltration"
 active: true

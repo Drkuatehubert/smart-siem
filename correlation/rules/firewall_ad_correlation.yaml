@@ -1,14 +1,15 @@
 id: firewall-ad-correlation
-nom: "Correlation Firewall + AD (multi-sources)"
-description: "Blocage firewall suivi d une tentative auth AD depuis la meme IP"
-type: sequentielle
+nom: "Activité suspecte AD derrière FW (MITRE T1078)"
+description: "Authentification AD échouée depuis IP traversant le firewall"
+type: seuil
 condition:
-  steps:
-    - field: "log_type"
-      value: "reseau"
-    - field: "log_type"
-      value: "auth"
-fenetre_temporelle_s: 60
+  field: "log_type"
+  value: "auth_fail"
+  threshold: 10
+fenetre_temporelle_s: 120
 mitre_tactic: "T1078 - Valid Accounts"
+mitre_technique_id: "T1078"
 niveau_alerte_genere: HIGH
+cve_references: []
+kill_chain_phase: "initial_access"
 active: true

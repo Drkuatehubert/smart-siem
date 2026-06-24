@@ -1,45 +1,92 @@
 """
-exceptions.py — Gestionnaires d'erreurs HTTP personnalisés
+exceptions.py — Gestionnaires d'erreurs HTTP personnalisés (durcis)
+
 Responsable : Chef de Projet & Sécurité
+Exigences : NFR-SEC-05 (pas de fuite d'info dans les erreurs)
+
+Règles appliquées :
+  * aucune query string n'est jamais renvoyée au client (fuite de tokens, API keys) ;
+  * aucun champ `input` Pydantic (fuite de mots de passe saisis) ;
+  * aucun traceback côté client sur 500 (loggué serveur uniquement) ;
+  * chaque réponse inclut le `request_id` pour la traçabilité.
 """
 
-from fastapi import Request, HTTPException
-from fastapi.responses import JSONResponse
+from __future__ import annotations
+
+import logging
+
+from fastapi import HTTPException, Request, status
 from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
+from slowapi.errors import RateLimitExceeded
+
+logger = logging.getLogger("errors")
 
 
-async def http_exception_handler(request: Request, exc: HTTPException):
+def _safe_payload(request: Request, status_code: int, detail: str, extra: dict | None = None) -> dict:
+    """Construit une réponse d'erreur normalisée."""
+    payload = {
+        "error": True,
+        "status_code": status_code,
+        "detail": detail,
+        "path": request.url.path,  # PAS request.url (pas de query string)
+        "request_id": getattr(request.state, "request_id", None),
+    }
+    if extra:
+        payload.update(extra)
+    return payload
+
+
+async def http_exception_handler(request: Request, exc: HTTPException) -> JSONResponse:
     return JSONResponse(
         status_code=exc.status_code,
-        content={
-            "error": True,
-            "status_code": exc.status_code,
-            "detail": exc.detail,
-            "path": str(request.url),
-        },
+        content=_safe_payload(request, exc.status_code, str(exc.detail)),
+        headers=getattr(exc, "headers", None),
     )
 
 
-async def validation_exception_handler(request: Request, exc: RequestValidationError):
+async def validation_exception_handler(
+    request: Request, exc: RequestValidationError,
+) -> JSONResponse:
+    """Ne renvoie que les erreurs sanitisées (loc/msg/type), pas le `input` (mots de passe)."""
+    sanitized = [
+        {"loc": list(e.get("loc", [])), "msg": e.get("msg"), "type": e.get("type")}
+        for e in exc.errors()
+    ]
     return JSONResponse(
-        status_code=422,
-        content={
-            "error": True,
-            "status_code": 422,
-            "detail": "Données de requête invalides",
-            "errors": exc.errors(),
-            "path": str(request.url),
-        },
+        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        content=_safe_payload(
+            request, 422, "Données de requête invalides", {"errors": sanitized},
+        ),
     )
 
 
-async def generic_exception_handler(request: Request, exc: Exception):
+async def generic_exception_handler(request: Request, exc: Exception) -> JSONResponse:
+    """500 : log serveur complet, message client générique."""
+    logger.exception(
+        "Unhandled exception on %s %s (request_id=%s): %s",
+        request.method, request.url.path,
+        getattr(request.state, "request_id", None),
+        exc,
+    )
     return JSONResponse(
-        status_code=500,
-        content={
-            "error": True,
-            "status_code": 500,
-            "detail": "Erreur interne du serveur",
-            "path": str(request.url),
-        },
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        content=_safe_payload(request, 500, "Erreur interne du serveur"),
+    )
+
+
+async def rate_limit_exceeded_handler(
+    request: Request, exc: RateLimitExceeded,
+) -> JSONResponse:
+    """Handler dédié au 429 (slowapi)."""
+    logger.warning(
+        "Rate limit exceeded on %s %s (request_id=%s, client=%s)",
+        request.method, request.url.path,
+        getattr(request.state, "request_id", None),
+        request.client.host if request.client else "?",
+    )
+    return JSONResponse(
+        status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+        content=_safe_payload(request, 429, "Trop de requêtes, veuillez réessayer plus tard"),
+        headers={"Retry-After": "60"},
     )
