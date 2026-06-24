@@ -1,0 +1,14 @@
+version: '3.9'
+
+services:
+  normalizer:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: log-normalizer
+    env_file: .env
+    ports:
+      - "443:443"
+    volumes:
+      - ./certs:/app/certs:ro
+    restart: unless-stopped
