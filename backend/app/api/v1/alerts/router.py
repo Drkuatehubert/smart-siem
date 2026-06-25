@@ -1,4 +1,4 @@
-"""alerts/router.py"""
+﻿"""alerts/router.py"""
 from typing import Optional
 from fastapi import APIRouter, Depends, Query
 from app.api.v1.alerts.schemas import AlertListResponse, AlertStatusUpdate
@@ -20,7 +20,7 @@ async def get_alerts(
     await write_audit_log(current_user["sub"], "consultation_alerte", details={"filters": {"niveau": niveau, "statut": statut}})
     return result
 
-@router.patch("/{alert_id}/status", summary="Mettre à jour le statut d'une alerte")
+@router.patch("/{alert_id}/status", summary="Mettre Ã  jour le statut d'une alerte")
 async def update_status(
     alert_id: str, body: AlertStatusUpdate,
     current_user: dict = Depends(require_permission("alerts:update"))

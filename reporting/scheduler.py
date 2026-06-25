@@ -1,1 +1,1 @@
-"""scheduler.py — APScheduler pour génération automatique"""; # TODO: pip install apscheduler
+ï»¿"""scheduler.py â€” APScheduler pour gÃ©nÃ©ration automatique"""; # TODO: pip install apscheduler

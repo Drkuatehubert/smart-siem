@@ -1,1 +1,1 @@
-"""pdf_renderer.py — Génération PDF via WeasyPrint"""; # TODO: pip install weasyprint
+ï»¿"""pdf_renderer.py â€” GÃ©nÃ©ration PDF via WeasyPrint"""; # TODO: pip install weasyprint

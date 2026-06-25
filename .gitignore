@@ -1,4 +1,4 @@
-# Python
+ï»¿# Python
 __pycache__/
 *.py[cod]
 *.egg-info/
@@ -13,21 +13,21 @@ node_modules/
 frontend/dist/
 frontend/.env.local
 
-# Secrets — NE JAMAIS COMMITTER
+# Secrets â€” NE JAMAIS COMMITTER
 .env
 *.env.local
 *.env.production
 
-# Certificats TLS — générés localement
-docker/certs/ca.pem
-docker/certs/ca.key
-docker/certs/ca.srl
-docker/certs/*.crt
-docker/certs/*.key
+# Certificats TLS â€” gÃ©nÃ©rÃ©s localement
+docker/certs/**/*.pem
+docker/certs/**/*.key
+docker/certs/**/*.srl
+docker/certs/**/*.crt
+docker/certs/**/*.key
 docker/nginx/ssl/cert.pem
 docker/nginx/ssl/key.pem
 
-# Volumes Docker (données runtime)
+# Volumes Docker (donnÃ©es runtime)
 esdata/
 redisdata/
 reporting/generated_reports/
@@ -52,5 +52,5 @@ htmlcov/
 .pytest_cache/
 coverage.xml
 
-# Rapports générés
+# Rapports gÃ©nÃ©rÃ©s
 *.pdf

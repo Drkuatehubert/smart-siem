@@ -1,7 +1,7 @@
-"""
-scripts/seed_rules.py — Import des règles MITRE depuis YAML dans ES
+﻿"""
+scripts/seed_rules.py â€” Import des rÃ¨gles MITRE depuis YAML dans ES
 
-Responsable : Ingénieur Data + Chef de Projet (sécurité)
+Responsable : IngÃ©nieur Data + Chef de Projet (sÃ©curitÃ©)
 
 Idempotent : PUT /idx-correlation-rules/_doc/<id> (refresh=wait_for).
 Valide chaque YAML via `correlation.rule_loader.load_rule_file` (Pydantic).
@@ -34,7 +34,7 @@ async def main() -> None:
 
     rules_dir = ROOT / "correlation" / "rules"
     files = sorted(rules_dir.glob("*.yaml"))
-    print(f"[seed_rules] {len(files)} fichier(s) YAML trouvé(s)")
+    print(f"[seed_rules] {len(files)} fichier(s) YAML trouvÃ©(s)")
 
     ok = 0
     for f in files:
@@ -49,14 +49,14 @@ async def main() -> None:
                 document=rule,
                 refresh="wait_for",
             )
-            print(f"  ✓ {rule_id:<40s}  MITRE {rule.get('mitre_technique_id')}  [{rule.get('niveau_alerte_genere')}]")
+            print(f"  âœ“ {rule_id:<40s}  MITRE {rule.get('mitre_technique_id')}  [{rule.get('niveau_alerte_genere')}]")
             ok += 1
         except Exception as exc:
-            print(f"  ✗ {f.name}: {exc}")
+            print(f"  âœ— {f.name}: {exc}")
             sys.exit(1)
 
     await es.close()
-    print(f"\n{ok}/{len(files)} règles importées.")
+    print(f"\n{ok}/{len(files)} rÃ¨gles importÃ©es.")
 
 
 if __name__ == "__main__":

@@ -1,15 +1,15 @@
-"""
-evaluators/threshold.py — Évaluateur de règles à seuil (RF-COR-01)
+﻿"""
+evaluators/threshold.py â€” Ã‰valuateur de rÃ¨gles Ã  seuil (RF-COR-01)
 
-Évalue une règle de type `seuil` : on compte dans une fenêtre temporelle
-le nombre de logs dont un champ donné matche une valeur, et on déclenche
-si on dépasse le seuil.
+Ã‰value une rÃ¨gle de type `seuil` : on compte dans une fenÃªtre temporelle
+le nombre de logs dont un champ donnÃ© matche une valeur, et on dÃ©clenche
+si on dÃ©passe le seuil.
 
-Améliorations :
+AmÃ©liorations :
   * import absolu ;
   * cap de la `size` (max 200) ;
   * logging explicite des matches ;
-  * ne retourne jamais plus de `threshold` IDs (évite des tableaux démesurés).
+  * ne retourne jamais plus de `threshold` IDs (Ã©vite des tableaux dÃ©mesurÃ©s).
 """
 
 from __future__ import annotations
@@ -24,7 +24,7 @@ logger = logging.getLogger("correlation.evaluators.threshold")
 
 
 class ThresholdEvaluator:
-    """Règle de type `seuil` — compte les logs dans une fenêtre temporelle."""
+    """RÃ¨gle de type `seuil` â€” compte les logs dans une fenÃªtre temporelle."""
 
     _MAX_SIZE = 200
 

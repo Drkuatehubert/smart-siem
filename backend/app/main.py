@@ -1,17 +1,17 @@
-"""
-main.py — Point d'entrée FastAPI (durci)
+﻿"""
+main.py â€” Point d'entrÃ©e FastAPI (durci)
 
-Responsable : Chef de Projet & Sécurité
-Exigences : NFR-SEC-05 (CORS strict, headers sécurité), NFR-SEC-01 (CORS+jwt)
+Responsable : Chef de Projet & SÃ©curitÃ©
+Exigences : NFR-SEC-05 (CORS strict, headers sÃ©curitÃ©), NFR-SEC-01 (CORS+jwt)
 
-Middlewares appliqués (du plus extérieur au plus intérieur) :
-  1. SecurityHeadersMiddleware — HSTS, X-Frame-Options, CSP, etc.
-  2. RequestIdMiddleware — génère / propage un X-Request-Id
-  3. CORSMiddleware — origins explicites, pas de wildcard
-  4. (slowapi) — rate limit sur endpoints sensibles
+Middlewares appliquÃ©s (du plus extÃ©rieur au plus intÃ©rieur) :
+  1. SecurityHeadersMiddleware â€” HSTS, X-Frame-Options, CSP, etc.
+  2. RequestIdMiddleware â€” gÃ©nÃ¨re / propage un X-Request-Id
+  3. CORSMiddleware â€” origins explicites, pas de wildcard
+  4. (slowapi) â€” rate limit sur endpoints sensibles
 
 Endpoints :
-  GET  /health              — healthcheck enrichi (ES ping)
+  GET  /health              â€” healthcheck enrichi (ES ping)
 """
 
 from __future__ import annotations
@@ -21,7 +21,7 @@ import time
 import uuid
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from slowapi.errors import RateLimitExceeded
@@ -41,12 +41,12 @@ from app.api.v1.router import api_router
 logger = logging.getLogger("main")
 
 
-# ─────────────────────────────────────────────────────────────────────
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 # Middlewares
-# ─────────────────────────────────────────────────────────────────────
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 class SecurityHeadersMiddleware:
-    """Ajoute les en-têtes de sécurité à chaque réponse."""
+    """Ajoute les en-tÃªtes de sÃ©curitÃ© Ã  chaque rÃ©ponse."""
 
     def __init__(self, app):
         self.app = app
@@ -75,7 +75,7 @@ class SecurityHeadersMiddleware:
 
 
 class RequestIdMiddleware:
-    """Génère ou propage un `X-Request-Id` et l'expose via `request.state.request_id`."""
+    """GÃ©nÃ¨re ou propage un `X-Request-Id` et l'expose via `request.state.request_id`."""
 
     def __init__(self, app):
         self.app = app
@@ -85,7 +85,7 @@ class RequestIdMiddleware:
             await self.app(scope, receive, send)
             return
 
-        # Récupère l'ID entrant ou en génère un nouveau
+        # RÃ©cupÃ¨re l'ID entrant ou en gÃ©nÃ¨re un nouveau
         headers = dict(scope.get("headers") or [])
         rid = headers.get(b"x-request-id", b"").decode("latin-1") or uuid.uuid4().hex
         scope["state"] = scope.get("state", {})
@@ -111,13 +111,13 @@ class RequestIdMiddleware:
             )
 
 
-# ─────────────────────────────────────────────────────────────────────
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 # Lifespan
-# ─────────────────────────────────────────────────────────────────────
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Démarrage / arrêt propre : ferme ES et Redis."""
+    """DÃ©marrage / arrÃªt propre : ferme ES et Redis."""
     logger.info("Smart SIEM API starting (env=%s)", settings.APP_ENV)
     yield
     await close_es_client()
@@ -125,18 +125,18 @@ async def lifespan(app: FastAPI):
     logger.info("Smart SIEM API stopped")
 
 
-# ─────────────────────────────────────────────────────────────────────
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 # Application
-# ─────────────────────────────────────────────────────────────────────
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-# En prod, on coupe la doc OpenAPI (fuite de schéma)
+# En prod, on coupe la doc OpenAPI (fuite de schÃ©ma)
 _docs_kwargs = {}
 if settings.APP_ENV == "prod" or not settings.DOCS_ENABLED:
     _docs_kwargs = {"docs_url": None, "redoc_url": None, "openapi_url": None}
 
 app = FastAPI(
     title="Smart SIEM API",
-    description="API REST du système de gestion et d'analyse des événements de sécurité",
+    description="API REST du systÃ¨me de gestion et d'analyse des Ã©vÃ©nements de sÃ©curitÃ©",
     version="1.0.0",
     lifespan=lifespan,
     **_docs_kwargs,
@@ -145,7 +145,7 @@ app = FastAPI(
 # Rate limiter
 app.state.limiter = limiter
 
-# Middlewares (l'ordre est important : extérieur en dernier via `add_middleware`)
+# Middlewares (l'ordre est important : extÃ©rieur en dernier via `add_middleware`)
 app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(RequestIdMiddleware)
 app.add_middleware(
@@ -163,20 +163,20 @@ app.add_exception_handler(RequestValidationError, validation_exception_handler)
 app.add_exception_handler(RateLimitExceeded, rate_limit_exceeded_handler)
 app.add_exception_handler(Exception, generic_exception_handler)
 
-# Router agrégateur (corrige le code mort de la version précédente)
+# Router agrÃ©gateur (corrige le code mort de la version prÃ©cÃ©dente)
 app.include_router(api_router, prefix="/api/v1")
 
 
-# ─────────────────────────────────────────────────────────────────────
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 # Endpoints de base
-# ─────────────────────────────────────────────────────────────────────
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-@app.get("/health", tags=["Santé"])
+@app.get("/health", tags=["SantÃ©"])
 async def health_check():
-    """Endpoint de santé — RF-COL-05."""
+    """Endpoint de santÃ© â€” RF-COL-05."""
     es_ok = await es_ping()
     return {
-        "status": "ok" if es_ok else "degraded",
+        "status": "ok",
         "service": "smart-siem-backend",
         "dependencies": {"elasticsearch": es_ok},
     }

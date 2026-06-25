@@ -1,17 +1,17 @@
-"""
-service.py — Logique métier d'authentification (durcie)
+﻿"""
+service.py â€” Logique mÃ©tier d'authentification (durcie)
 
-Responsable : Chef de Projet & Sécurité
+Responsable : Chef de Projet & SÃ©curitÃ©
 Exigences : RF-SEC-01, RF-SEC-03 (audit), NFR-SEC-02, NFR-SEC-04 (lockout)
 
-Durcissements par rapport à la version initiale :
-  * `authenticate_user` est à durée constante (chemin unique avec bcrypt dummy
-    si l'utilisateur n'existe pas) ⇒ empêche l'énumération par timing ;
+Durcissements par rapport Ã  la version initiale :
+  * `authenticate_user` est Ã  durÃ©e constante (chemin unique avec bcrypt dummy
+    si l'utilisateur n'existe pas) â‡’ empÃªche l'Ã©numÃ©ration par timing ;
   * un seul message d'erreur pour "user inconnu" et "mauvais mot de passe" ;
   * compteurs Redis `failed_login:<username>` et `failed_login:<ip>` ;
-  * verrouillage du compte au-delà de `ACCOUNT_LOCKOUT_THRESHOLD` (423 Locked) ;
-  * `last_login_at` mis à jour à chaque succès ;
-  * `write_audit_log` enrichi : IP, UA, request_id, méthode, chemin, status ;
+  * verrouillage du compte au-delÃ  de `ACCOUNT_LOCKOUT_THRESHOLD` (423 Locked) ;
+  * `last_login_at` mis Ã  jour Ã  chaque succÃ¨s ;
+  * `write_audit_log` enrichi : IP, UA, request_id, mÃ©thode, chemin, status ;
   * support MFA : si `MFA_REQUIRED` et `mfa_enabled`, on renvoie un
     `mfa_token` court (5 min) sans access token complet.
 """
@@ -36,17 +36,17 @@ from app.core.elasticsearch import get_es_client
 from app.core.redis_client import get_redis_client
 
 
-# ─────────────────────────────────────────────────────────────────────
-# Constantes d'erreur — ne jamais révéler pourquoi l'auth a échoué
-# ─────────────────────────────────────────────────────────────────────
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# Constantes d'erreur â€” ne jamais rÃ©vÃ©ler pourquoi l'auth a Ã©chouÃ©
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 _ERR_INVALID = "Identifiants incorrects"
-_ERR_LOCKED = "Compte temporairement verrouillé"
+_ERR_LOCKED = "Compte temporairement verrouillÃ©"
 
 
-# ─────────────────────────────────────────────────────────────────────
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 # Lockout : compteurs Redis
-# ─────────────────────────────────────────────────────────────────────
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 def _user_fail_key(username: str) -> str:
     return f"failed_login:user:{username.lower()}"
@@ -59,7 +59,7 @@ def _ttl_seconds() -> int:
 
 
 async def _bump_failed_login(username: str, ip: str) -> int:
-    """Incrémente les compteurs et renvoie le compteur user (TTL = lockout duration)."""
+    """IncrÃ©mente les compteurs et renvoie le compteur user (TTL = lockout duration)."""
     r = get_redis_client()
     pipe = r.pipeline()
     pipe.incr(_user_fail_key(username))
@@ -76,7 +76,7 @@ async def _reset_failed_login(username: str, ip: str) -> None:
 
 
 async def _is_locked(user_doc: Dict[str, Any], username: str, ip: str) -> bool:
-    """Renvoie True si le compte (en ES) ou les compteurs Redis dépassent le seuil."""
+    """Renvoie True si le compte (en ES) ou les compteurs Redis dÃ©passent le seuil."""
     # 1. Champ explicite dans le doc utilisateur
     locked_until = user_doc.get("locked_until")
     if locked_until:
@@ -98,9 +98,9 @@ async def _is_locked(user_doc: Dict[str, Any], username: str, ip: str) -> bool:
     )
 
 
-# ─────────────────────────────────────────────────────────────────────
-# Authentification (chemin à durée constante)
-# ─────────────────────────────────────────────────────────────────────
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# Authentification (chemin Ã  durÃ©e constante)
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 async def authenticate_user(
     username: str,
@@ -113,10 +113,10 @@ async def authenticate_user(
     Authentifie un utilisateur avec mitigations :
       * timing constant (bcrypt dummy sur user manquant) ;
       * lockout par compte ET par IP ;
-      * audit `connexion_echouee` ou `connexion_reussie` systématique.
+      * audit `connexion_echouee` ou `connexion_reussie` systÃ©matique.
 
-    Lève 401 (mauvais identifiants) ou 423 (locked).
-    Renvoie le document utilisateur (avec son `id`) en cas de succès.
+    LÃ¨ve 401 (mauvais identifiants) ou 423 (locked).
+    Renvoie le document utilisateur (avec son `id`) en cas de succÃ¨s.
     """
     es = get_es_client()
     ip = ip or "0.0.0.0"
@@ -146,7 +146,7 @@ async def authenticate_user(
 
     # Garde timing constant : bcrypt dummy si user manquant
     if user is None:
-        hash_password(os.urandom(16).hex())  # ~même coût qu'un vrai check
+        hash_password(os.urandom(16).hex())  # ~mÃªme coÃ»t qu'un vrai check
         await _bump_failed_login(username, ip)
         await write_audit_log(
             user_id="anonymous",
@@ -179,12 +179,12 @@ async def authenticate_user(
             detail=_ERR_LOCKED,
         )
 
-    # Vérification du mot de passe
+    # VÃ©rification du mot de passe
     password_ok = verify_password(password, user["password_hash"])
 
     if not password_ok:
         attempts = await _bump_failed_login(username, ip)
-        # Si on dépasse le seuil, on pose locked_until dans le doc
+        # Si on dÃ©passe le seuil, on pose locked_until dans le doc
         if attempts >= settings.ACCOUNT_LOCKOUT_THRESHOLD:
             try:
                 until = datetime.now(timezone.utc) + timedelta(
@@ -222,7 +222,7 @@ async def authenticate_user(
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    # Succès : reset lockout + maj last_login_at
+    # SuccÃ¨s : reset lockout + maj last_login_at
     await _reset_failed_login(username, ip)
     try:
         await es.update(
@@ -250,13 +250,13 @@ async def authenticate_user(
     return user
 
 
-# ─────────────────────────────────────────────────────────────────────
-# Émission des tokens
-# ─────────────────────────────────────────────────────────────────────
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# Ã‰mission des tokens
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 async def create_user_token(user: Dict[str, Any]) -> Dict[str, Any]:
     """
-    Crée les tokens (access + refresh). Si MFA requis et activé,
+    CrÃ©e les tokens (access + refresh). Si MFA requis et activÃ©,
     renvoie un mfa_token court sans access token.
     """
     # MFA ?
@@ -300,7 +300,7 @@ async def create_user_token(user: Dict[str, Any]) -> Dict[str, Any]:
 
 
 async def refresh_user_token(user_id: str) -> Dict[str, Any]:
-    """Émet un nouveau access token à partir d'un user_id (validé par refresh JWT)."""
+    """Ã‰met un nouveau access token Ã  partir d'un user_id (validÃ© par refresh JWT)."""
     es = get_es_client()
     try:
         doc = await es.get(index="idx-users", id=user_id)
@@ -308,7 +308,7 @@ async def refresh_user_token(user_id: str) -> Dict[str, Any]:
         raise HTTPException(status_code=401, detail="Utilisateur introuvable")
     src = doc["_source"]
     if not src.get("is_active", False):
-        raise HTTPException(status_code=403, detail="Compte désactivé")
+        raise HTTPException(status_code=403, detail="Compte dÃ©sactivÃ©")
     access = create_access_token(
         user_id=user_id,
         username=src["username"],
@@ -323,9 +323,9 @@ async def refresh_user_token(user_id: str) -> Dict[str, Any]:
     }
 
 
-# ─────────────────────────────────────────────────────────────────────
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 # Audit log
-# ─────────────────────────────────────────────────────────────────────
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 async def write_audit_log(
     user_id: str,
@@ -342,15 +342,15 @@ async def write_audit_log(
     status: str = "success",
 ) -> None:
     """
-    Écrit une entrée dans le journal d'audit `idx-audit-log` (append-only).
+    Ã‰crit une entrÃ©e dans le journal d'audit `idx-audit-log` (append-only).
 
-    Champs capturés (durcis) :
+    Champs capturÃ©s (durcis) :
       user_id, action, ip_address, user_agent, request_id,
       target_entity, target_id, http_method, http_path, status,
       details (dict libre), created_at.
 
-    Aucune exception n'est propagée : un audit raté ne doit pas faire
-    échouer une opération métier.
+    Aucune exception n'est propagÃ©e : un audit ratÃ© ne doit pas faire
+    Ã©chouer une opÃ©ration mÃ©tier.
     """
     try:
         es = get_es_client()

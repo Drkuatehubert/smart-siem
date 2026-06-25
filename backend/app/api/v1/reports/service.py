@@ -1,1 +1,1 @@
-# TODO: implémenter la génération PDF/Excel (Reporting module)
+ï»¿# TODO: implÃ©menter la gÃ©nÃ©ration PDF/Excel (Reporting module)

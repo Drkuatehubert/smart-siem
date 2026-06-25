@@ -1,4 +1,4 @@
-"""scripts/seed_data.py — Génération de 1000+ logs simulés (Faker)"""
+ï»¿"""scripts/seed_data.py â€” GÃ©nÃ©ration de 1000+ logs simulÃ©s (Faker)"""
 import asyncio, random, uuid, os
 from datetime import datetime, timezone, timedelta
 from elasticsearch import AsyncElasticsearch
@@ -16,6 +16,6 @@ async def main():
     now=datetime.now(timezone.utc)
     docs=[{"source_id":"seed","timestamp":(now-timedelta(minutes=random.randint(0,10080))).isoformat(),"host":random.choice(HOSTS),"source_ip":f"192.168.{random.randint(1,10)}.{random.randint(1,254)}","log_type":random.choice(TYPES),"severity":random.choice(LEVELS),"raw_message":random.choice(MESSAGES),"normalized_fields":{},"tags":[],"is_flagged":False,"archived":False,"retention_expiry":(now+timedelta(days=30)).isoformat()} for _ in range(1000)]
     for doc in docs: await es.index(index="idx-logs",document=doc)
-    print(f"? {len(docs)} logs simulés insérés.")
+    print(f"? {len(docs)} logs simulÃ©s insÃ©rÃ©s.")
     await es.close()
 if __name__=="__main__": asyncio.run(main())

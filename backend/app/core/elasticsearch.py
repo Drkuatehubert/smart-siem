@@ -1,15 +1,15 @@
-"""
-elasticsearch.py — Client Elasticsearch singleton (durci)
+﻿"""
+elasticsearch.py â€” Client Elasticsearch singleton (durci)
 
-Responsable : Chef de Projet & Sécurité
-Exigences : NFR-SEC-05 (TLS obligatoire en prod), durcissement opérationnel
+Responsable : Chef de Projet & SÃ©curitÃ©
+Exigences : NFR-SEC-05 (TLS obligatoire en prod), durcissement opÃ©rationnel
 
-Réglages :
+RÃ©glages :
   * request_timeout (pas de queries qui pendent) ;
-  * max_retries + retry_on_timeout (résilience face aux blips) ;
-  * http_compress (réduit la bande passante) ;
-  * connections_per_node (évite de marteler un seul nœud) ;
-  * ca_certs si fourni, sinon verify_certs booléen.
+  * max_retries + retry_on_timeout (rÃ©silience face aux blips) ;
+  * http_compress (rÃ©duit la bande passante) ;
+  * connections_per_node (Ã©vite de marteler un seul nÅ“ud) ;
+  * ca_certs si fourni, sinon verify_certs boolÃ©en.
 """
 
 from __future__ import annotations
@@ -29,8 +29,8 @@ _es_lock = asyncio.Lock()
 def get_es_client() -> AsyncElasticsearch:
     """
     Retourne le client ES singleton.
-    Note : la création est protégée par un asyncio.Lock pour gérer
-    les accès concurrents au démarrage (FastAPI startup asynchrone).
+    Note : la crÃ©ation est protÃ©gÃ©e par un asyncio.Lock pour gÃ©rer
+    les accÃ¨s concurrents au dÃ©marrage (FastAPI startup asynchrone).
     """
     global _es_client
     if _es_client is None:
@@ -38,7 +38,7 @@ def get_es_client() -> AsyncElasticsearch:
         if not _es_lock.locked():
             _es_client = _create_client()
         else:
-            # Race : autre coroutine crée le client, on attend
+            # Race : autre coroutine crÃ©e le client, on attend
             asyncio.get_event_loop().run_until_complete(_es_lock.acquire())
             try:
                 if _es_client is None:
@@ -66,7 +66,7 @@ def _create_client() -> AsyncElasticsearch:
 
 
 async def es_ping() -> bool:
-    """Ping l'endpoint ES. Utilisé par /health."""
+    """Ping l'endpoint ES. UtilisÃ© par /health."""
     try:
         es = get_es_client()
         return bool(await es.ping())

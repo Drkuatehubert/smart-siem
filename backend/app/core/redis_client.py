@@ -1,15 +1,15 @@
-"""
-redis_client.py — Client Redis (Streams + cache + révocation JWT)
+﻿"""
+redis_client.py â€” Client Redis (Streams + cache + rÃ©vocation JWT)
 
-Responsable : Chef de Projet & Sécurité
-Exigences : NFR-SEC-05 (AUTH + TLS en prod), NFR-SEC-01 (révocation JTI)
+Responsable : Chef de Projet & SÃ©curitÃ©
+Exigences : NFR-SEC-05 (AUTH + TLS en prod), NFR-SEC-01 (rÃ©vocation JTI)
 
-Réglages :
+RÃ©glages :
   * AUTH via REDIS_PASSWORD ;
   * TLS optionnel (REDIS_TLS) ;
-  * sockets bornés (timeouts) ;
-  * publish_log : XADD avec MAXLEN, et taille message bornée ;
-  * health-check périodique.
+  * sockets bornÃ©s (timeouts) ;
+  * publish_log : XADD avec MAXLEN, et taille message bornÃ©e ;
+  * health-check pÃ©riodique.
 """
 
 from __future__ import annotations
@@ -40,6 +40,7 @@ def get_redis_client() -> aioredis.Redis:
             socket_connect_timeout=5,
             health_check_interval=30,
             ssl_cert_reqs="required" if settings.REDIS_TLS else None,
+            ssl_ca_certs=settings.REDIS_CA_CERTS if settings.REDIS_TLS else None,
         )
     return _redis_client
 
@@ -57,7 +58,7 @@ async def close_redis_client() -> None:
 async def publish_log(log: dict) -> None:
     """
     Publie un log brut dans le stream Redis (XADD avec MAXLEN).
-    Lève si le message dépasse REDIS_MESSAGE_MAX_BYTES (anti-DoS).
+    LÃ¨ve si le message dÃ©passe REDIS_MESSAGE_MAX_BYTES (anti-DoS).
     """
     payload = json.dumps(log, ensure_ascii=False)
     if len(payload.encode("utf-8")) > settings.REDIS_MESSAGE_MAX_BYTES:

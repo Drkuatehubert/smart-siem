@@ -1,6 +1,6 @@
-"""
-Models Pydantic — idx-roles
-Responsable : Chef de Projet & Sécurité
+﻿"""
+Models Pydantic â€” idx-roles
+Responsable : Chef de Projet & SÃ©curitÃ©
 """
 
 from typing import Optional, List

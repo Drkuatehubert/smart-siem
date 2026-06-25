@@ -1,4 +1,4 @@
-"""soar/alerting.py — Création et dispatch des notifications"""
+ï»¿"""soar/alerting.py â€” CrÃ©ation et dispatch des notifications"""
 import asyncio, logging, os
 from elasticsearch import AsyncElasticsearch
 from notifiers.email_notifier import send_email

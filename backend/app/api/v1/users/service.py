@@ -1,17 +1,17 @@
-"""
-service.py — Logique métier de gestion des utilisateurs (durcie)
+﻿"""
+service.py â€” Logique mÃ©tier de gestion des utilisateurs (durcie)
 
-Responsable : Chef de Projet & Sécurité
+Responsable : Chef de Projet & SÃ©curitÃ©
 Exigences : RF-SEC-02, RF-SEC-04
 
-Fonctions exposées :
-  * list_users          — pagination (capée)
-  * get_user_by_id      — fetch unique
-  * create_user         — unicité username + hachage + insertion
-  * update_user         — patch partiel (last-admin guard)
-  * delete_user         — delete (last-admin guard)
-  * set_user_active     — active/désactive (utilisé par SOAR disable_account)
-  * count_active_admins — utilisé par last-admin guard et dashboard
+Fonctions exposÃ©es :
+  * list_users          â€” pagination (capÃ©e)
+  * get_user_by_id      â€” fetch unique
+  * create_user         â€” unicitÃ© username + hachage + insertion
+  * update_user         â€” patch partiel (last-admin guard)
+  * delete_user         â€” delete (last-admin guard)
+  * set_user_active     â€” active/dÃ©sactive (utilisÃ© par SOAR disable_account)
+  * count_active_admins â€” utilisÃ© par last-admin guard et dashboard
 """
 
 from __future__ import annotations
@@ -28,7 +28,7 @@ from app.core.rbac import Role
 
 IDX = "idx-users"
 
-# Champs sensibles — JAMAIS retournés en sortie
+# Champs sensibles â€” JAMAIS retournÃ©s en sortie
 _SENSITIVE = {"password_hash", "password_history", "mfa_pending_secret"}
 
 
@@ -38,12 +38,12 @@ def _sanitize(doc: Dict[str, Any]) -> Dict[str, Any]:
     return doc
 
 
-# ─────────────────────────────────────────────────────────────────────
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 # Lecture
-# ─────────────────────────────────────────────────────────────────────
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 async def list_users(page: int = 1, size: int = 50) -> Dict[str, Any]:
-    """Liste paginée des utilisateurs. `size` bornée à 500."""
+    """Liste paginÃ©e des utilisateurs. `size` bornÃ©e Ã  500."""
     size = max(1, min(size, 500))
     es = get_es_client()
     res = await es.search(
@@ -89,18 +89,18 @@ async def count_active_admins() -> int:
     return res["count"]
 
 
-# ─────────────────────────────────────────────────────────────────────
-# Écriture
-# ─────────────────────────────────────────────────────────────────────
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# Ã‰criture
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 async def create_user(data: Dict[str, Any]) -> Dict[str, Any]:
     es = get_es_client()
     username = data["username"].lower()
 
-    # Unicité username
+    # UnicitÃ© username
     exists = await es.exists(index=IDX, id=username)
     if exists:
-        raise HTTPException(status_code=409, detail="Nom d'utilisateur déjà pris")
+        raise HTTPException(status_code=409, detail="Nom d'utilisateur dÃ©jÃ  pris")
 
     raw_password = data.pop("password")
     doc: Dict[str, Any] = {
@@ -122,7 +122,7 @@ async def update_user(user_id: str, patch: Dict[str, Any]) -> Dict[str, Any]:
     es = get_es_client()
     patch = {k: v for k, v in patch.items() if v is not None}
 
-    # Garde "last admin" si on touche au rôle admin ou à is_active
+    # Garde "last admin" si on touche au rÃ´le admin ou Ã  is_active
     if "role_id" in patch or "is_active" in patch:
         current = await get_user_by_id(user_id)
         if not current:

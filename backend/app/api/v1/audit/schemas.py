@@ -1,7 +1,7 @@
-"""
-schemas.py — Schémas Pydantic pour le journal d'audit (durcis)
+﻿"""
+schemas.py â€” SchÃ©mas Pydantic pour le journal d'audit (durcis)
 
-Responsable : Chef de Projet & Sécurité
+Responsable : Chef de Projet & SÃ©curitÃ©
 Index : idx-audit-log (append-only, ILM 7 ans)
 """
 
@@ -12,8 +12,8 @@ from typing import List, Literal, Optional
 from pydantic import BaseModel, Field
 
 
-# Valeurs autorisées pour `action` (énumération ouverte, énum étendue via Literal).
-# Toute autre valeur est acceptée mais tagged `unknown` côté affichage.
+# Valeurs autorisÃ©es pour `action` (Ã©numÃ©ration ouverte, Ã©num Ã©tendue via Literal).
+# Toute autre valeur est acceptÃ©e mais tagged `unknown` cÃ´tÃ© affichage.
 AuditAction = Literal[
     "connexion",
     "connexion_reussie",
