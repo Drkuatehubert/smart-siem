@@ -1,0 +1,43 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Space Grotesk", sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  font-family: var(--font-sans);
+}
+
+h1, h2, h3, h4, .font-semibold {
+  font-family: var(--font-display), var(--font-sans);
+  letter-spacing: -0.025em;
+}
+
+/* Densité d'affichage compacte pour consoles de sécurité */
+td, th {
+  padding-top: 0.5rem !important;
+  padding-bottom: 0.5rem !important;
+}
+
+/* Thème sombre haute fidélité (Slate & Blue) */
+:root {
+  background-color: #F8FAFC;
+}
+
+.dark {
+  background-color: #0F172A !important;
+  color: #E2E8F0 !important;
+}
+
+/* Animations pour barres de chargement */
+@keyframes loading-bar {
+  0% { width: 0%; transform: translateX(0%); }
+  50% { width: 50%; transform: translateX(50%); }
+  100% { width: 100%; transform: translateX(100%); }
+}

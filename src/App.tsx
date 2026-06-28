@@ -1,0 +1,207 @@
+/**
+ * @license
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+import React, { useState, useEffect } from 'react';
+import Sidebar from './components/Sidebar';
+import Header from './components/Header';
+
+// Security Views Modules
+import DashboardView from './components/pages/DashboardView';
+import IncidentsView from './components/pages/IncidentsView';
+import LogsView from './components/pages/LogsView';
+import UebaView from './components/pages/UebaView';
+import RulesView from './components/pages/RulesView';
+import ThreatIntelView from './components/pages/TreatIntelView';
+import AgentsView from './components/pages/AgentsView';
+import VulnView from './components/pages/VulnView';
+import PlaybooksView from './components/pages/PlaybooksView';
+import ReportsView from './components/pages/ReportsView';
+import ComplianceView from './components/pages/ComplianceView';
+import AdminView from './components/pages/AdminView';
+
+// RBAC
+// RBAC
+import type { UserRole } from './types';
+import { type ModuleID, RBAC_POLICIES, isModuleAllowed } from './utils/rbac';
+import LoginView from './components/pages/LoginView';
+
+export default function App() {
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
+    return localStorage.getItem('siem_authenticated') === 'true';
+  });
+  const [activeModule, setActiveModule] = useState<ModuleID>('dashboard');
+  const [activeRole, setActiveRole] = useState<UserRole>(() => {
+    return (localStorage.getItem('siem_role') as UserRole) || 'SOC_ANALYST';
+  });
+  const [userEmail, setUserEmail] = useState<string>(() => {
+    return localStorage.getItem('siem_email') || '';
+  });
+  const [isDarkMode, setIsDarkMode] = useState<boolean>(true);
+
+  // Sync theme class on <html> element for Tailwind dark utility modes
+  useEffect(() => {
+    const root = window.document.documentElement;
+    if (isDarkMode) {
+      root.classList.add('dark');
+      root.style.backgroundColor = '#0F172A';
+    } else {
+      root.classList.remove('dark');
+      root.style.backgroundColor = '#f8fafc';
+    }
+  }, [isDarkMode]);
+
+  // Reactive Access Guard: if the user switches roles, and their active module is no longer allowed,
+  // automatically redirect them to their first permitted module.
+  useEffect(() => {
+    if (!isModuleAllowed(activeRole, activeModule)) {
+      const allowed = RBAC_POLICIES[activeRole].allowedModules;
+      if (allowed.length > 0) {
+        setActiveModule(allowed[0]);
+      }
+    }
+  }, [activeRole]);
+
+  // Listen for JWT expiration or unauthorized events from the centralized API client
+  useEffect(() => {
+    const handleUnauthorized = () => {
+      handleLogout();
+    };
+    window.addEventListener('siem:unauthorized', handleUnauthorized);
+    return () => {
+      window.removeEventListener('siem:unauthorized', handleUnauthorized);
+    };
+  }, []);
+
+  const toggleTheme = () => {
+    setIsDarkMode(!isDarkMode);
+  };
+
+  const handleLoginSuccess = (role: UserRole, email: string, keepSession: boolean) => {
+    setIsAuthenticated(true);
+    setActiveRole(role);
+    setUserEmail(email);
+    if (keepSession) {
+      localStorage.setItem('siem_authenticated', 'true');
+      localStorage.setItem('siem_role', role);
+      localStorage.setItem('siem_email', email);
+    } else {
+      localStorage.removeItem('siem_authenticated');
+      localStorage.removeItem('siem_role');
+      localStorage.removeItem('siem_email');
+    }
+  };
+
+  const handleLogout = () => {
+    setIsAuthenticated(false);
+    setUserEmail('');
+    localStorage.removeItem('siem_authenticated');
+    localStorage.removeItem('siem_role');
+    localStorage.removeItem('siem_email');
+  };
+
+  // Render view safely based on active route state
+  const renderActiveView = () => {
+    // Safety guard
+    if (!isModuleAllowed(activeRole, activeModule)) {
+      return (
+        <div id="rbac-error-boundary" className="p-8 h-full flex flex-col items-center justify-center text-center">
+          <div className="w-12 h-12 bg-red-500/10 text-red-500 rounded-full flex items-center justify-center mb-3">
+            ⚠️
+          </div>
+          <h4 className="font-bold text-sm text-slate-900 dark:text-slate-50">Accès Refusé</h4>
+          <p className="text-xs text-slate-500 mt-1 max-w-xs">Vous ne possédez pas les autorisations nécessaires pour ce module.</p>
+        </div>
+      );
+    }
+
+    switch (activeModule) {
+      case 'dashboard':
+        return <DashboardView />;
+      case 'incidents':
+        return <IncidentsView activeRole={activeRole} />;
+      case 'logs':
+        return <LogsView />;
+      case 'ueba':
+        return <UebaView />;
+      case 'rules':
+        return <RulesView activeRole={activeRole} />;
+      case 'threat_intel':
+        return <ThreatIntelView activeRole={activeRole} />;
+      case 'agents':
+        return <AgentsView />;
+      case 'vuln':
+        return <VulnView activeRole={activeRole} />;
+      case 'playbooks':
+        return <PlaybooksView activeRole={activeRole} />;
+      case 'reports':
+        return <ReportsView activeRole={activeRole} />;
+      case 'compliance':
+        return <ComplianceView activeRole={activeRole} />;
+      case 'admin':
+        return <AdminView activeRole={activeRole} />;
+      default:
+        return <DashboardView />;
+    }
+  };
+
+  // Human friendly page title and subtitle metadata
+  const MODULE_METADATA: Record<ModuleID, { title: string; subtitle: string }> = {
+    dashboard: { title: 'Tableau de bord', subtitle: 'Analyse et métriques globales de sécurité' },
+    incidents: { title: 'Alertes', subtitle: 'Gestion et remédiation des incidents actifs' },
+    logs: { title: 'Investigation', subtitle: 'Analyse de menaces en temps réel' },
+    agents: { title: 'Explorateur de logs', subtitle: 'Télémétrie et collecte d\'agents' },
+    rules: { title: 'Règles', subtitle: 'Corrélation et logique de détection' },
+    playbooks: { title: 'Playbooks SOAR', subtitle: 'Automatisation des réponses aux incidents' },
+    ueba: { title: 'UEBA', subtitle: 'Détection comportementale et anomalies' },
+    reports: { title: 'Rapports', subtitle: 'Générateur de synthèses et rapports d\'audit' },
+    threat_intel: { title: 'Sources', subtitle: 'Threat Intelligence & Flux de menaces' },
+    admin: { title: 'Gestion des utilisateurs', subtitle: 'Administration système et habilitations RBAC' },
+    compliance: { title: 'Paramètres', subtitle: 'Configuration globale et réglages du SIEM' },
+    vuln: { title: 'Logs d\'audit', subtitle: 'Traces d\'activité et conformité règlementaire' },
+  };
+
+  const currentMeta = MODULE_METADATA[activeModule] || { title: 'Smart SIEM', subtitle: 'Vigilance & Précision' };
+
+  if (!isAuthenticated) {
+    return (
+      <LoginView
+        onLoginSuccess={handleLoginSuccess}
+        isDarkMode={isDarkMode}
+        toggleTheme={toggleTheme}
+      />
+    );
+  }
+
+  return (
+    <div id="siem-app-shell" className="flex h-screen w-screen overflow-hidden bg-[#F1F5F9] dark:bg-[#0F172A] text-slate-900 dark:text-slate-100 transition-colors duration-300 font-sans">
+      {/* Sidebar Navigation */}
+      <Sidebar
+        activeModule={activeModule}
+        setActiveModule={setActiveModule}
+        activeRole={activeRole}
+        onLogout={handleLogout}
+      />
+
+      {/* Main Console Area */}
+      <div id="main-console-area" className="flex-1 flex flex-col h-full overflow-hidden">
+        {/* Top Control Bar */}
+        <Header
+          isDarkMode={isDarkMode}
+          toggleTheme={toggleTheme}
+          activeRole={activeRole}
+          setActiveRole={setActiveRole}
+          title={currentMeta.title}
+          subtitle={currentMeta.subtitle}
+          setActiveModule={setActiveModule}
+        />
+
+        {/* View stage wrapper */}
+        <main id="console-viewport" className="flex-1 overflow-hidden relative">
+          {renderActiveView()}
+        </main>
+      </div>
+    </div>
+  );
+}
