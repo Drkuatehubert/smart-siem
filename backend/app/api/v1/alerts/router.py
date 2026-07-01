@@ -1,4 +1,4 @@
-﻿"""alerts/router.py"""
+"""alerts/router.py"""
 from typing import Optional
 from fastapi import APIRouter, Depends, Query
 from app.api.v1.alerts.schemas import AlertListResponse, AlertStatusUpdate
@@ -13,14 +13,19 @@ async def get_alerts(
     niveau: Optional[str] = Query(None),
     statut: Optional[str] = Query(None),
     page: int = Query(1, ge=1), size: int = Query(50, ge=1, le=200),
+    # require_permission("alerts:read") : voir la matrice PERMISSIONS dans core/rbac.py
+    # pour la liste des rôles autorisés.
     current_user: dict = Depends(require_permission("alerts:read"))
 ):
+    # org_scope de l'utilisateur courant, jamais celui d'un paramètre de requête :
+    # empêche un utilisateur de consulter les alertes d'une autre organisation
+    # simplement en changeant un paramètre d'URL.
     org_scope = current_user.get("org_scope")
     result = await list_alerts(niveau, statut, page, size, org_scope)
     await write_audit_log(current_user["sub"], "consultation_alerte", details={"filters": {"niveau": niveau, "statut": statut}})
     return result
 
-@router.patch("/{alert_id}/status", summary="Mettre Ã  jour le statut d'une alerte")
+@router.patch("/{alert_id}/status", summary="Mettre à jour le statut d'une alerte")
 async def update_status(
     alert_id: str, body: AlertStatusUpdate,
     current_user: dict = Depends(require_permission("alerts:update"))

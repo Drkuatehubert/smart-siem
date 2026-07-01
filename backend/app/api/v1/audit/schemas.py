@@ -1,7 +1,7 @@
-﻿"""
-schemas.py â€” SchÃ©mas Pydantic pour le journal d'audit (durcis)
+"""
+schemas.py — Schémas Pydantic pour le journal d'audit (durcis)
 
-Responsable : Chef de Projet & SÃ©curitÃ©
+Responsable : Chef de Projet & Sécurité
 Index : idx-audit-log (append-only, ILM 7 ans)
 """
 
@@ -12,8 +12,11 @@ from typing import List, Literal, Optional
 from pydantic import BaseModel, Field
 
 
-# Valeurs autorisÃ©es pour `action` (Ã©numÃ©ration ouverte, Ã©num Ã©tendue via Literal).
-# Toute autre valeur est acceptÃ©e mais tagged `unknown` cÃ´tÃ© affichage.
+# Valeurs autorisées pour `action` (énumération ouverte, énum étendue via Literal).
+# Toute autre valeur est acceptée mais tagged `unknown` côté affichage.
+# NOTE : ce Literal sert de documentation/référence des types d'événements connus ;
+# le champ `action` réel dans AuditLogOut reste un simple `str` (voir plus bas),
+# pour ne jamais rejeter un événement d'audit à cause d'une valeur non encore listée ici.
 AuditAction = Literal[
     "connexion",
     "connexion_reussie",
@@ -45,6 +48,8 @@ AuditAction = Literal[
 
 
 class AuditLogOut(BaseModel):
+    # Représente une entrée telle que renvoyée au client (voir write_audit_log
+    # dans api/v1/auth/service.py pour la structure d'écriture correspondante).
     id: str
     user_id: str
     action: str
@@ -71,6 +76,8 @@ class AuditExportRequest(BaseModel):
     format: Literal["csv", "jsonl"] = "csv"
     from_date: Optional[str] = None
     to_date: Optional[str] = None
+    # Plafond dur à 100 000 lignes : protège contre un export qui tenterait
+    # de dumper la totalité d'un historique de 7 ans en une seule requête.
     max_rows: int = Field(default=50_000, ge=1, le=100_000)
 
 

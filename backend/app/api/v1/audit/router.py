@@ -1,8 +1,8 @@
-﻿"""
-router.py â€” Endpoints du journal d'audit (durcis)
+"""
+router.py — Endpoints du journal d'audit (durcis)
 
-Responsable : Chef de Projet & SÃ©curitÃ©
-Exigences : RF-SEC-03 â€” Admin et Auditeur (lecture seule)
+Responsable : Chef de Projet & Sécurité
+Exigences : RF-SEC-03 — Admin et Auditeur (lecture seule)
 """
 
 from __future__ import annotations
@@ -40,6 +40,9 @@ async def list_audit_logs(
     to_date: Optional[str] = Query(None),
     page: int = Query(1, ge=1),
     size: int = Query(50, ge=1, le=500),
+    # Tous les endpoints de ce router sont réservés à require_auditor
+    # (administrateurs + auditeurs), en cohérence avec RF-SEC-03 : consulter
+    # l'audit ne doit pas nécessiter des droits d'écriture sur le reste du système.
     _user: dict = Depends(require_auditor),
 ):
     return await get_audit_logs(user_id, action, from_date, to_date, page, size)
@@ -48,8 +51,8 @@ async def list_audit_logs(
 @router.get(
     "/failed-logins",
     response_model=FailedLoginsResponse,
-    summary="Ã‰checs de connexion",
-    description="AgrÃ¨ge les `connexion_echouee` et `compte_verrouille`.",
+    summary="Échecs de connexion",
+    description="Agrège les `connexion_echouee` et `compte_verrouille`.",
 )
 async def list_failed_logins(
     from_date: Optional[str] = Query(None),
@@ -70,7 +73,7 @@ async def list_failed_logins(
 @router.get(
     "/logs/export",
     summary="Export streaming du journal d'audit (CSV/JSONL)",
-    description="Renvoie un flux streaming â€” la lecture n'est pas paginÃ©e cÃ´tÃ© client.",
+    description="Renvoie un flux streaming — la lecture n'est pas paginée côté client.",
 )
 async def export_logs(
     format: str = Query("csv", pattern=r"^(csv|jsonl)$"),
@@ -83,11 +86,14 @@ async def export_logs(
     filename = f"audit-log.{format}"
 
     async def _gen():
+        # Relaie simplement le générateur du service vers la réponse HTTP streamée.
         async for chunk in export_audit_logs(format, from_date, to_date, max_rows):
             yield chunk
 
     return StreamingResponse(
         _gen(),
         media_type=media_type,
+        # Content-Disposition: attachment force le navigateur à proposer un
+        # téléchargement de fichier plutôt que d'afficher le flux brut.
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )

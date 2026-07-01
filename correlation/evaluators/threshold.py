@@ -22,7 +22,7 @@ from elasticsearch import AsyncElasticsearch
 
 logger = logging.getLogger("correlation.evaluators.threshold")
 
-
+ù
 class ThresholdEvaluator:
     """RÃ¨gle de type `seuil` â€” compte les logs dans une fenÃªtre temporelle."""
 

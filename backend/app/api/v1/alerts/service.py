@@ -1,10 +1,14 @@
-﻿"""alerts/service.py â€” Gestion des alertes dans ES"""
+"""alerts/service.py — Gestion des alertes dans ES"""
 from datetime import datetime, timezone
 from typing import Optional
 from app.core.elasticsearch import get_es_client
 
 
 async def list_alerts(niveau=None, statut=None, page=1, size=50, org_scope=None) -> dict:
+    # Recherche paginée avec filtres optionnels. org_scope est systématiquement
+    # transmis par le router (jamais laissé au choix du client) pour garantir
+    # l'isolation multi-tenant (RF-SEC-04) : chaque utilisateur ne voit que les
+    # alertes de son périmètre.
     es = get_es_client()
     must = []
     if niveau: must.append({"term": {"niveau": niveau}})
@@ -20,6 +24,8 @@ async def list_alerts(niveau=None, statut=None, page=1, size=50, org_scope=None)
 
 
 async def update_alert_status(alert_id: str, statut: str, assigned_to: Optional[str], commentaires: Optional[str]) -> dict:
+    # Mise à jour partielle : seuls les champs fournis (non None) sont modifiés,
+    # updated_at est toujours rafraîchi pour tracer le moment du dernier changement.
     es = get_es_client()
     doc = {"statut": statut, "updated_at": datetime.now(timezone.utc).isoformat()}
     if assigned_to: doc["assigned_to"] = assigned_to

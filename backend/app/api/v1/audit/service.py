@@ -1,13 +1,13 @@
-﻿"""
-service.py â€” Lecture et export du journal d'audit
+"""
+service.py — Lecture et export du journal d'audit
 
-Responsable : Chef de Projet & SÃ©curitÃ©
+Responsable : Chef de Projet & Sécurité
 Index : idx-audit-log (append-only, ILM 7 ans)
 
 Fonctions :
-  * get_audit_logs          â€” recherche paginÃ©e avec filtres
-  * get_failed_logins       â€” agrÃ¨ge les Ã©checs de connexion
-  * export_audit_logs       â€” streaming CSV/JSONL (max 100k rows)
+  * get_audit_logs          — recherche paginée avec filtres
+  * get_failed_logins       — agrège les échecs de connexion
+  * export_audit_logs       — streaming CSV/JSONL (max 100k rows)
 """
 
 from __future__ import annotations
@@ -26,6 +26,8 @@ async def _build_query(
     from_date: Optional[str],
     to_date: Optional[str],
 ) -> Dict[str, Any]:
+    # Construit dynamiquement une requête Elasticsearch "bool/must" à partir des
+    # filtres fournis : chaque filtre non vide ajoute une condition supplémentaire.
     must: List[Dict[str, Any]] = []
     if user_id:
         must.append({"term": {"user_id": user_id}})
@@ -34,10 +36,12 @@ async def _build_query(
     if from_date or to_date:
         rng: Dict[str, str] = {}
         if from_date:
-            rng["gte"] = from_date
+            rng["gte"] = from_date  # "greater than or equal" : borne basse de la période
         if to_date:
-            rng["lte"] = to_date
+            rng["lte"] = to_date    # "less than or equal" : borne haute de la période
         must.append({"range": {"created_at": rng}})
+    # Si aucun filtre n'est fourni, on renvoie une requête "tout" plutôt qu'un
+    # bool/must vide (comportement équivalent mais plus explicite/lisible).
     return {"bool": {"must": must}} if must else {"match_all": {}}
 
 
@@ -50,12 +54,12 @@ async def get_audit_logs(
     size: int = 50,
 ) -> Dict[str, Any]:
     es = get_es_client()
-    size = max(1, min(size, 500))
+    size = max(1, min(size, 500))  # borne anti-abus, comme pour les autres listes paginées
     query = await _build_query(user_id, action, from_date, to_date)
     res = await es.search(
         index="idx-audit-log",
         query=query,
-        sort=[{"created_at": {"order": "desc"}}],
+        sort=[{"created_at": {"order": "desc"}}],  # événements les plus récents en premier
         from_=(page - 1) * size,
         size=size,
     )
@@ -75,6 +79,8 @@ async def get_failed_logins(
     page: int = 1,
     size: int = 50,
 ) -> Dict[str, Any]:
+    # Vue spécialisée : ne remonte que les tentatives de connexion échouées,
+    # utile pour un tableau de bord de sécurité (repérer une attaque en cours).
     es = get_es_client()
     size = max(1, min(size, 500))
     must: List[Dict[str, Any]] = [{"term": {"action": "connexion_echouee"}}]
@@ -111,9 +117,14 @@ async def export_audit_logs(
     """
     Stream l'export (CSV ou JSONL) avec `search_after` (deep-paging safe).
     """
+    # Cette fonction est un générateur asynchrone : elle produit les données au fur
+    # et à mesure ("yield"), ce qui permet de streamer un export volumineux vers le
+    # client sans avoir à tout charger en mémoire côté serveur.
     es = get_es_client()
     query = await _build_query(None, None, from_date, to_date)
     if fmt == "csv":
+        # io.StringIO sert de "fichier CSV en mémoire" : on y écrit une ligne à la fois
+        # puis on vide le buffer (truncate) après chaque envoi au client.
         buf = io.StringIO()
         writer = csv.writer(buf)
         writer.writerow([
@@ -125,28 +136,36 @@ async def export_audit_logs(
         buf.seek(0)
         buf.truncate(0)
     elif fmt == "jsonl":
+        # JSON Lines : pas d'en-tête à écrire, chaque ligne est un objet JSON indépendant.
         yield b""
     else:
         raise ValueError(f"format inconnu : {fmt}")
 
+    # Tri stable (created_at + _id) requis pour que `search_after` fonctionne correctement :
+    # contrairement à la pagination par `from_`/`size`, `search_after` reste performant
+    # même après des dizaines de milliers de résultats ("deep paging").
     sort = [{"created_at": "asc"}, {"_id": "asc"}]
     pit = None
     rows = 0
     try:
-        # Use point-in-time if available (ES 7.10+)
+        # Point-in-time : fige une vue cohérente de l'index le temps de l'export,
+        # pour éviter que des documents insérés entre-temps ne décalent la pagination.
         pit = await es.open_point_in_time(index="idx-audit-log", keep_alive="2m")
         pit_id = pit["id"]
     except Exception:
+        # Elasticsearch trop ancien ou fonctionnalité indisponible : on continue sans PIT
+        # (léger risque d'incohérence sur un export concurrent à de nouvelles écritures).
         pit_id = None
 
     search_after: Optional[List[Any]] = None
     while rows < max_rows:
         body: Dict[str, Any] = {
-            "size": min(1000, max_rows - rows),
+            "size": min(1000, max_rows - rows),  # récupère par lots de 1000 max
             "query": query,
             "sort": sort,
         }
         if search_after:
+            # Reprend la pagination juste après le dernier document du lot précédent.
             body["search_after"] = search_after
         if pit_id:
             body["pit"] = {"id": pit_id, "keep_alive": "2m"}
@@ -173,12 +192,14 @@ async def export_audit_logs(
             rows += 1
             if rows >= max_rows:
                 break
+        # Le curseur de pagination pour le prochain lot = valeurs de tri du dernier hit reçu.
         search_after = hits[-1].get("sort")
         if not search_after:
             break
 
     if pit_id:
         try:
+            # Libère la ressource "point-in-time" côté Elasticsearch dès que l'export est fini.
             await es.close_point_in_time(body={"id": pit_id})
         except Exception:
             pass

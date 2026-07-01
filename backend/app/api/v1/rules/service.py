@@ -1,9 +1,10 @@
-﻿from app.core.elasticsearch import get_es_client
+from app.core.elasticsearch import get_es_client
 async def list_rules(page=1, size=50):
     es = get_es_client()
     res = await es.search(index="idx-correlation-rules",body={"query":{"match_all":{}},"from":(page-1)*size,"size":size})
     return {"total":res["hits"]["total"]["value"],"page":page,"size":size,"results":[{"id":h["_id"],**h["_source"]} for h in res["hits"]["hits"]]}
 async def create_rule(data: dict, user_id: str):
+    # user_id (l'admin qui crée la règle) est tracé dans "created_by" pour la traçabilité.
     es = get_es_client()
     doc = {**data, "created_by": user_id}
     res = await es.index(index="idx-correlation-rules", document=doc)
