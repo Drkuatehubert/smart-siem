@@ -1,126 +1,170 @@
-﻿version: "3.9"
+version: "3.9"
+
+# =============================================================================
+# Smart SIEM — Orchestration centralisée (UCAC-ICAM)
+# Usage prod  : docker compose up -d
+# Usage dev   : docker compose -f docker-compose.yml -f docker-compose.dev.yml up
+#
+# Elasticsearch : instance partagée via ngrok (voir ELASTICSEARCH_HOST dans .env)
+# Redis         : instance locale (nécessaire pour la queue SOAR)
+# =============================================================================
+
+networks:
+  siem-network:
+    driver: bridge
+
+volumes:
+  redisdata:
+  reports:
 
 services:
-  elasticsearch:
-    image: docker.elastic.co/elasticsearch/elasticsearch:8.13.0
-    environment:
-      - discovery.type=single-node
-      - ES_JAVA_OPTS=-Xms512m -Xmx512m
-      - ELASTIC_PASSWORD=${ELASTICSEARCH_PASSWORD}
-      - xpack.security.enabled=true
-    volumes:
-      - esdata:/usr/share/elasticsearch/data
-      - ./docker/elasticsearch/elasticsearch.yml:/usr/share/elasticsearch/config/elasticsearch.yml:ro
-      - ./docker/certs:/usr/share/elasticsearch/config/certs:ro
-    ports:
-      - "9200:9200"
-    healthcheck:
-      test: ["CMD-SHELL", "curl --cacert /usr/share/elasticsearch/config/certs/ca.pem -sf -u elastic:${ELASTICSEARCH_PASSWORD} https://localhost:9200/_cluster/health || exit 1"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
-    restart: unless-stopped
+
+  # ── Infrastructure ──────────────────────────────────────────────────────────
+  #
+  # elasticsearch : commenté — on utilise l'instance des camarades via ngrok.
+  # URL configurée dans .env : ELASTICSEARCH_HOST=https://primate-stabilize-yin.ngrok-free.dev
+  #
+  # elasticsearch:
+  #   image: docker.elastic.co/elasticsearch/elasticsearch:8.13.0
+  #   container_name: siem-elasticsearch
+  #   environment:
+  #     - discovery.type=single-node
+  #     - ES_JAVA_OPTS=-Xms512m -Xmx512m
+  #     - ELASTIC_PASSWORD=${ELASTICSEARCH_PASSWORD}
+  #     - xpack.security.enabled=true
+  #   volumes:
+  #     - esdata:/usr/share/elasticsearch/data
+  #     - ./docker/elasticsearch/elasticsearch.yml:/usr/share/elasticsearch/config/elasticsearch.yml:ro
+  #     - ./docker/certs:/usr/share/elasticsearch/config/certs:ro
+  #   ports:
+  #     - "9200:9200"
+  #   networks:
+  #     - siem-network
+  #   healthcheck:
+  #     test: ["CMD-SHELL", "curl -sf ${ELASTICSEARCH_HOST}/_cluster/health || exit 1"]
+  #     interval: 30s
+  #     timeout: 10s
+  #     retries: 5
+  #   restart: unless-stopped
 
   redis:
     image: redis:7-alpine
-    command: redis-server /usr/local/etc/redis/redis.conf
+    container_name: siem-redis
     volumes:
-      - ./docker/redis/redis.conf:/usr/local/etc/redis/redis.conf:ro
-      - ./docker/certs:/certs:ro
       - redisdata:/data
     ports:
       - "6379:6379"
+    networks:
+      - siem-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
     restart: unless-stopped
+
+  # ── Collecte & Normalisation ─────────────────────────────────────────────────
+
+  normalizer:
+    build:
+      context: "./COLLECTE & NORMALISATION/normalizer-api"
+      dockerfile: Dockerfile
+    container_name: siem-normalizer
+    env_file: .env
+    ports:
+      - "8443:443"
+    volumes:
+      - "./COLLECTE & NORMALISATION/normalizer-api/certs:/app/certs:ro"
+    networks:
+      - siem-network
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # ── Backend FastAPI ───────────────────────────────────────────────────────────
 
   backend:
     build: ./backend
+    container_name: siem-backend
     env_file: .env
-    depends_on:
-      elasticsearch:
-        condition: service_healthy
-      redis:
-        condition: service_started
+    environment:
+      - ELASTICSEARCH_HOST=${ELASTICSEARCH_HOST}
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_TLS=false
     ports:
       - "8000:8000"
-    volumes:
-      - ./docker/certs:/certs:ro
-    environment:
-      - ELASTICSEARCH_HOST=https://elasticsearch:9200
-      - ELASTICSEARCH_CA_CERTS=/certs/ca.pem
-      - REDIS_TLS=true
-      - REDIS_CA_CERTS=/certs/ca.pem
-    restart: unless-stopped
-
-  syslog-receiver:
-    build: ./collectors/syslog_receiver
-    env_file: .env
-    ports:
-      - "514:514/udp"
-      - "514:514/tcp"
-      - "6514:6514/tcp"
-    volumes:
-      - ./docker/certs:/certs:ro
-    restart: unless-stopped
-
-  normalizer:
-    build: ./collectors/normalizer
-    env_file: .env
+    networks:
+      - siem-network
     depends_on:
-      - redis
-      - elasticsearch
+      redis:
+        condition: service_healthy
     restart: unless-stopped
+
+  # ── Corrélation MITRE ATT&CK ─────────────────────────────────────────────────
 
   correlation:
     build: ./correlation
+    container_name: siem-correlation
     env_file: .env
-    depends_on:
-      elasticsearch:
-        condition: service_healthy
-    volumes:
-      - ./docker/certs:/certs:ro
     environment:
-      - ELASTICSEARCH_HOST=https://elasticsearch:9200
-      - ELASTICSEARCH_CA_CERTS=/certs/ca.pem
+      - ELASTICSEARCH_HOST=${ELASTICSEARCH_HOST}
+    networks:
+      - siem-network
     restart: unless-stopped
 
-  soar:
-    build: ./soar
+  # ── SOAR Worker ───────────────────────────────────────────────────────────────
+  # Build context = racine pour que "from soar import config" fonctionne.
+
+  soar-worker:
+    build:
+      context: .
+      dockerfile: soar/Dockerfile
+    container_name: siem-soar-worker
     env_file: .env
-    depends_on:
-      - elasticsearch
-      - backend
-    volumes:
-      - ./docker/certs:/certs:ro
     environment:
-      - ELASTICSEARCH_HOST=https://elasticsearch:9200
-      - ELASTICSEARCH_CA_CERTS=/certs/ca.pem
-      - SOAR_REQUIRE_APPROVAL=true
-      - SOAR_MIN_AUTO_LEVEL=CRITICAL
-      - SOAR_DRY_RUN=true
+      - CELERY_BROKER=redis://redis:6379/0
+      - ES_HOST=${ELASTICSEARCH_HOST}
+    networks:
+      - siem-network
+    depends_on:
+      redis:
+        condition: service_healthy
     restart: unless-stopped
+
+  # ── Reporting ─────────────────────────────────────────────────────────────────
 
   reporting:
     build: ./reporting
+    container_name: siem-reporting
     env_file: .env
-    depends_on:
-      elasticsearch:
-        condition: service_healthy
+    environment:
+      - ELASTICSEARCH_HOST=${ELASTICSEARCH_HOST}
     volumes:
       - reports:/app/generated_reports
-      - ./docker/certs:/certs:ro
-    environment:
-      - ELASTICSEARCH_HOST=https://elasticsearch:9200
-      - ELASTICSEARCH_CA_CERTS=/certs/ca.pem
+    networks:
+      - siem-network
     restart: unless-stopped
+
+  # ── Frontend React ────────────────────────────────────────────────────────────
 
   frontend:
     build: ./frontend
+    container_name: siem-frontend
     ports:
       - "3000:80"
+    networks:
+      - siem-network
+    depends_on:
+      - backend
     restart: unless-stopped
+
+  # ── Nginx Reverse Proxy ───────────────────────────────────────────────────────
 
   nginx:
     image: nginx:alpine
+    container_name: siem-nginx
     ports:
       - "443:443"
       - "80:80"
@@ -128,12 +172,9 @@ services:
       - ./docker/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
       - ./docker/nginx/conf.d:/etc/nginx/conf.d:ro
       - ./docker/nginx/ssl:/etc/nginx/ssl:ro
+    networks:
+      - siem-network
     depends_on:
       - backend
       - frontend
     restart: unless-stopped
-
-volumes:
-  esdata:
-  redisdata:
-  reports:

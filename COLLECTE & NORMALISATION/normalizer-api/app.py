@@ -156,29 +156,56 @@ def extraire_nom_utilisateur(message: str) -> Optional[str]:
 def extraire_action(message: str) -> Optional[str]:
     msg = message.lower()
 
-    # Linux
+    # ── SSH / Auth ────────────────────────────────────────────────────────────
     if "invalid user" in msg:
         return "invalid_user"
     if "failed password" in msg or "authentication failure" in msg:
-        return "login_failed"
+        return "ssh_auth_failure"
     if "accepted password" in msg or "accepted publickey" in msg:
-        return "login_success"
+        return "ssh_auth_success"
     if "session opened" in msg:
         return "session_opened"
     if "session closed" in msg:
         return "session_closed"
-    if "sudo" in msg and "command" in msg:
-        return "privilege_escalation"
-    if "connection refused" in msg:
-        return "connection_refused"
     if "new lease" in msg or "dhcp" in msg:
         return "dhcp_lease"
 
-    # Windows EventIDs
+    # ── Réseau ────────────────────────────────────────────────────────────────
+    if "deny" in msg or "blocked" in msg or "connection refused" in msg:
+        return "connection_blocked"
+    if "connection allowed" in msg or "connection accepted" in msg:
+        return "connection_allowed"
+    if re.search(r'\bdns\b', msg):
+        return "dns_query"
+    if "icmp flood" in msg or "flood icmp" in msg:
+        return "icmp_flood"
+    if "bytes_out" in msg or re.search(r'transfert\s*>', msg):
+        return "large_outbound_transfer"
+
+    # ── Windows avancé (tester avant les EventIDs génériques) ────────────────
+    if "lsass" in msg or "credential" in msg:
+        return "credential_dump"
+    if "wmi" in msg:
+        return "wmi_exec"
+    if "smb" in msg or r"\\pipe\\" in msg:
+        return "smb_access"
+
+    # ── Windows EventIDs ──────────────────────────────────────────────────────
     if "eventid 4625" in msg or "échec de connexion" in msg:
-        return "login_failed"
+        return "ssh_auth_failure"
     if "eventid 4624" in msg or "connexion réussie" in msg:
-        return "login_success"
+        m = re.search(r'0x3e7\s*\|\s*(\d+)\s*\|', message)
+        if m:
+            logon_type = m.group(1)
+            if logon_type == "10":
+                return "rdp_connection"
+            if logon_type == "3":
+                return "network_logon"
+            if logon_type == "2":
+                return "interactive_logon"
+            if logon_type == "5":
+                return "service_logon"
+        return "ssh_auth_success"
     if "eventid 4648" in msg:
         return "privilege_escalation"
     if "eventid 4740" in msg or "compte verrouillé" in msg:
@@ -192,15 +219,35 @@ def extraire_action(message: str) -> Optional[str]:
     if "eventid 1102" in msg or "journal audit effacé" in msg:
         return "audit_log_cleared"
     if "eventid 4688" in msg or "processus créé" in msg:
-        return "process_created"
+        return "process_started"
+    if "eventid 7045" in msg or "service créé" in msg:
+        return "service_created"
     if "eventid 7036" in msg or "service démarré" in msg:
         return "service_started"
 
-    # Linux system
+    # ── Active Directory / Kerberos ───────────────────────────────────────────
+    if "eventid 4769" in msg:
+        return "kerberos_tgs_request"
+    if "eventid 4768" in msg:
+        return "kerberos_tgt_request"
+    if "eventid 5140" in msg or re.search(r'\bshare\b', msg):
+        return "admin_share_access"
+
+    # ── Système Linux ─────────────────────────────────────────────────────────
+    if "sudo" in msg and "command" in msg:
+        return "sudo_exec"
     if re.search(r'\bstarted\b', msg):
         return "service_started"
     if re.search(r'\bstopped\b|\bdeactivated\b', msg):
         return "service_stopped"
+
+    # ── Web / Cloud ───────────────────────────────────────────────────────────
+    if ("post" in msg and "401" in msg) or "exploit" in msg:
+        return "http_exploit_attempt"
+    if re.search(r'\bpost\b', msg):
+        return "http_post"
+    if "upload" in msg or "cloud" in msg:
+        return "cloud_upload"
 
     return None
 
@@ -213,7 +260,7 @@ def envoyer_vers_es(log_normalise: dict):
     """Indexe le log normalisé dans Elasticsearch."""
     try:
         es.index(
-            index="siem-logs-current",
+            index="idx-logs",
             document={
                 "@timestamp":   log_normalise["horodatage"],
                 "raw_log_id":   log_normalise["id_es"],
@@ -262,7 +309,10 @@ def normaliser(log: dict) -> dict:
 
 @app.post("/normalize", response_model=LogNormalise)
 def normalizer_endpoint(log: LogBrut):
-    return normaliser(log.model_dump())
+    normalise = normaliser(log.model_dump())
+    envoyer_vers_es(normalise)
+    print(f"[NORMALISE] action={normalise.get('action_evenement')} ip={normalise.get('ip_source')}", flush=True)
+    return normalise
 
 @app.post("/normalize/batch")
 def normalizer_batch(logs: list[LogBrut]):

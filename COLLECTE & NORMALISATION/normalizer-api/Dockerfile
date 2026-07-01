@@ -4,5 +4,6 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 COPY app.py .
 COPY http_ca.crt .
+COPY certs/ ./certs/
 EXPOSE 443
 CMD ["python", "app.py"]
