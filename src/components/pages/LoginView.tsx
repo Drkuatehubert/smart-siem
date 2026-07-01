@@ -1,22 +1,23 @@
-import React, { useState } from 'react';
-import { 
-  Shield, 
-  User, 
-  Lock, 
-  Eye, 
-  EyeOff, 
-  LogIn, 
-  Key, 
-  Fingerprint, 
-  QrCode, 
-  Sun, 
-  Moon, 
-  AlertCircle, 
+import React, { useState } from "react";
+import {
+  Shield,
+  User,
+  Lock,
+  Eye,
+  EyeOff,
+  LogIn,
+  Key,
+  Fingerprint,
+  QrCode,
+  Sun,
+  Moon,
+  AlertCircle,
   ShieldCheck,
-  RefreshCw
-} from 'lucide-react';
-import type { UserRole } from '../../types';
-import { api } from '../../Services/api';
+  RefreshCw,
+  Smartphone,
+} from "lucide-react";
+import type { UserRole } from "../../types";
+import { api } from "../../Services/api";
 
 interface LoginViewProps {
   onLoginSuccess: (role: UserRole, email: string, keepSession: boolean) => void;
@@ -24,69 +25,88 @@ interface LoginViewProps {
   toggleTheme: () => void;
 }
 
-export default function LoginView({ onLoginSuccess, isDarkMode, toggleTheme }: LoginViewProps) {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+export default function LoginView({
+  onLoginSuccess,
+  isDarkMode,
+  toggleTheme,
+}: LoginViewProps) {
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [totpCode, setTotpCode] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [keepSession, setKeepSession] = useState(false);
-  
+
   // Loading & Security verification states
   const [isLoading, setIsLoading] = useState(false);
-  const [stepMessage, setStepMessage] = useState('');
-  const [error, setError] = useState('');
+  const [stepMessage, setStepMessage] = useState("");
+  const [error, setError] = useState("");
 
   // Quick-fill credentials to make it easy to test different roles
   const quickProfiles = [
-    { email: 'jean.dupont@smart-siem.com', label: 'Analyste SOC', role: 'SOC_ANALYST' as UserRole },
-    { email: 'pierre.durand@smart-siem.com', label: 'Administrateur', role: 'ADMIN' as UserRole },
-    { email: 'marc.lemaire@smart-siem.com', label: 'RSSI', role: 'RSSI' as UserRole },
+    {
+      email: "jean.dupont@smart-siem.com",
+      label: "Analyste SOC",
+      role: "analyst" as UserRole,
+    },
+    {
+      email: "pierre.durand@smart-siem.com",
+      label: "Administrateur",
+      role: "admin" as UserRole,
+    },
+    {
+      email: "marc.lemaire@smart-siem.com",
+      label: "RSSI",
+      role: "reader" as UserRole,
+    },
   ];
 
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
-    setError('');
+    setError("");
 
     if (!email) {
-      setError('Veuillez saisir votre identifiant (adresse email).');
+      setError("Veuillez saisir votre identifiant (adresse email).");
       return;
     }
-    
+
     // Simple email validation
     const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailPattern.test(email)) {
-      setError('Veuillez saisir une adresse email valide (ex: nom.prenom@entreprise.com).');
+      setError(
+        "Veuillez saisir une adresse email valide (ex: nom.prenom@entreprise.com).",
+      );
       return;
     }
 
     if (!password) {
-      setError('Veuillez saisir votre mot de passe.');
+      setError("Veuillez saisir votre mot de passe.");
       return;
     }
 
     if (password.length < 4) {
-      setError('Le mot de passe doit contenir au moins 4 caractères.');
+      setError("Le mot de passe doit contenir au moins 4 caractères.");
       return;
     }
 
-    // Determine role based on email keyword or fallback to SOC_ANALYST
-    let assignedRole: UserRole = 'SOC_ANALYST';
-    if (email.includes('admin') || email.includes('pierre')) {
-      assignedRole = 'ADMIN';
-    } else if (email.includes('rssi') || email.includes('marc')) {
-      assignedRole = 'RSSI';
-    } else if (email.includes('audit') || email.includes('externe')) {
-      assignedRole = 'AUDITOR';
+    // Determine role based on email keyword or fallback to analyst
+    let assignedRole: UserRole = "analyst";
+    if (email.includes("admin") || email.includes("pierre")) {
+      assignedRole = "admin";
+    } else if (email.includes("rssi") || email.includes("marc")) {
+      assignedRole = "reader";
+    } else if (email.includes("audit") || email.includes("externe")) {
+      assignedRole = "reader";
     }
 
     // Trigger sequential visual security steps to simulate real enterprise MFA SIEM login
     setIsLoading(true);
-    
+
     const steps = [
-      { msg: 'Connexion au serveur d\'authentification...', delay: 0 },
-      { msg: 'Vérification des identifiants chiffrés...', delay: 500 },
-      { msg: 'Génération du challenge d\'authentification MFA...', delay: 1100 },
-      { msg: 'Poignée de main TLS sécurisée établie...', delay: 1600 },
-      { msg: 'Session sécurisée validée. Redirection...', delay: 2100 }
+      { msg: "Connexion au serveur d'authentification...", delay: 0 },
+      { msg: "Vérification des identifiants chiffrés...", delay: 500 },
+      { msg: "Vérification du code MFA TOTP...", delay: 1100 },
+      { msg: "Poignée de main TLS sécurisée établie...", delay: 1600 },
+      { msg: "Session sécurisée validée. Redirection...", delay: 2100 },
     ];
 
     steps.forEach((step) => {
@@ -96,7 +116,8 @@ export default function LoginView({ onLoginSuccess, isDarkMode, toggleTheme }: L
     });
 
     // Make the REST API connection call via our central api service
-    api.login(email, password)
+    api
+      .login(email, password, totpCode || undefined)
       .then((response) => {
         setTimeout(() => {
           onLoginSuccess(response.user.role, response.user.email, keepSession);
@@ -105,19 +126,21 @@ export default function LoginView({ onLoginSuccess, isDarkMode, toggleTheme }: L
       })
       .catch((err) => {
         setIsLoading(false);
-        setError(err.message || 'Échec de la connexion à la passerelle REST API.');
+        setError(
+          err.message || "Échec de la connexion à la passerelle REST API.",
+        );
       });
   };
 
-  const handleQuickFill = (profile: typeof quickProfiles[0]) => {
+  const handleQuickFill = (profile: (typeof quickProfiles)[0]) => {
     setEmail(profile.email);
-    setPassword('•••••••••••••');
-    setError('');
+    setPassword("•••••••••••••");
+    setTotpCode("");
+    setError("");
   };
 
   return (
     <div className="h-screen w-screen overflow-hidden relative bg-slate-950 text-slate-100 font-sans selection:bg-blue-500/30 selection:text-blue-200 flex flex-col items-center justify-center">
-      
       {/* Deep Space Atmosphere Background */}
       <div className="absolute inset-0 pointer-events-none overflow-hidden z-0">
         <div className="absolute top-1/4 left-1/3 w-96 h-96 bg-blue-500/10 rounded-full blur-3xl opacity-30 animate-pulse duration-5000"></div>
@@ -133,13 +156,16 @@ export default function LoginView({ onLoginSuccess, isDarkMode, toggleTheme }: L
           className="p-2 rounded-lg border text-slate-400 dark:text-slate-300 bg-slate-900/40 border-slate-800 hover:bg-slate-800/60 hover:text-white hover:scale-105 active:scale-95 transition-all shadow-lg cursor-pointer"
           title="Basculer le thème"
         >
-          {isDarkMode ? <Sun className="w-4.5 h-4.5 text-amber-400" /> : <Moon className="w-4.5 h-4.5 text-slate-400" />}
+          {isDarkMode ? (
+            <Sun className="w-4.5 h-4.5 text-amber-400" />
+          ) : (
+            <Moon className="w-4.5 h-4.5 text-slate-400" />
+          )}
         </button>
       </header>
 
       {/* Center login form - Perfectly Centered Vertically and Horizontally */}
       <main className="w-full max-w-md px-6 flex flex-col justify-center items-center relative z-10 my-auto">
-        
         {/* Logo and Branding Header */}
         <div className="flex flex-col items-center text-center mb-6 group cursor-default">
           <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-blue-600/20 to-emerald-500/20 border border-blue-500/30 flex items-center justify-center text-blue-400 shadow-2xl mb-4 p-0.5 transform group-hover:scale-110 group-hover:rotate-3 transition-all duration-300">
@@ -202,13 +228,22 @@ export default function LoginView({ onLoginSuccess, isDarkMode, toggleTheme }: L
                     <Lock className="w-3.5 h-3.5" />
                     <span>Mot de passe</span>
                   </label>
-                  <a href="#forgot" onClick={(e) => { e.preventDefault(); setError('Veuillez contacter votre administrateur SOC pour réinitialiser vos identifiants.'); }} className="text-[11px] text-blue-400 hover:text-blue-300 hover:underline transition-all">
+                  <a
+                    href="#forgot"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      setError(
+                        "Veuillez contacter votre administrateur SOC pour réinitialiser vos identifiants.",
+                      );
+                    }}
+                    className="text-[11px] text-blue-400 hover:text-blue-300 hover:underline transition-all"
+                  >
                     Mot de passe oublié ?
                   </a>
                 </div>
                 <div className="relative">
                   <input
-                    type={showPassword ? 'text' : 'password'}
+                    type={showPassword ? "text" : "password"}
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     placeholder="••••••••••••"
@@ -219,9 +254,31 @@ export default function LoginView({ onLoginSuccess, isDarkMode, toggleTheme }: L
                     onClick={() => setShowPassword(!showPassword)}
                     className="absolute right-3 top-2.5 text-slate-500 hover:text-slate-300 transition-colors cursor-pointer"
                   >
-                    {showPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                    {showPassword ? (
+                      <EyeOff className="w-3.5 h-3.5" />
+                    ) : (
+                      <Eye className="w-3.5 h-3.5" />
+                    )}
                   </button>
                 </div>
+              </div>
+
+              {/* TOTP Code Field */}
+              <div className="space-y-1.5 group">
+                <label className="text-xs font-semibold text-slate-400 flex items-center gap-1.5 group-hover:text-blue-400 transition-colors">
+                  <Smartphone className="w-3.5 h-3.5" />
+                  <span>Code MFA (TOTP)</span>
+                </label>
+                <input
+                  type="text"
+                  value={totpCode}
+                  onChange={(e) =>
+                    setTotpCode(e.target.value.replace(/\D/g, "").slice(0, 6))
+                  }
+                  placeholder="000000"
+                  maxLength={6}
+                  className="w-full rounded-lg border border-slate-800 hover:border-slate-700 bg-slate-950/80 px-3.5 py-2 text-xs text-white placeholder:text-slate-600 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20 transition-all duration-200 font-mono tracking-[0.5em] text-center focus:shadow-[0_0_12px_rgba(59,130,246,0.15)]"
+                />
               </div>
 
               {/* Keep session Checkbox */}
@@ -233,7 +290,10 @@ export default function LoginView({ onLoginSuccess, isDarkMode, toggleTheme }: L
                   onChange={(e) => setKeepSession(e.target.checked)}
                   className="w-3.5 h-3.5 rounded border-slate-800 bg-slate-950 accent-blue-500 cursor-pointer focus:ring-0 focus:ring-offset-0 transition-transform group-hover:scale-105"
                 />
-                <label htmlFor="keep-session" className="ml-2 text-xs text-slate-400 group-hover:text-slate-200 transition-colors cursor-pointer select-none">
+                <label
+                  htmlFor="keep-session"
+                  className="ml-2 text-xs text-slate-400 group-hover:text-slate-200 transition-colors cursor-pointer select-none"
+                >
                   Maintenir la session active
                 </label>
               </div>
@@ -254,18 +314,18 @@ export default function LoginView({ onLoginSuccess, isDarkMode, toggleTheme }: L
               Authentification sécurisée par MFA
             </span>
             <div className="flex items-center gap-5 text-slate-600">
-            <Key 
-  className="w-4 h-4 hover:text-blue-400 hover:scale-125 transition-all duration-200 cursor-pointer" 
-  aria-label="Clé FIDO2/WebAuthn" 
-/>
-<Fingerprint 
-  className="w-4 h-4 hover:text-blue-400 hover:scale-125 transition-all duration-200 cursor-pointer" 
-  aria-label="Données Biométriques" 
-/>
-<QrCode 
-  className="w-4 h-4 hover:text-blue-400 hover:scale-125 transition-all duration-200 cursor-pointer" 
-  aria-label="Code à usage unique" 
-/>
+              <Key
+                className="w-4 h-4 hover:text-blue-400 hover:scale-125 transition-all duration-200 cursor-pointer"
+                aria-label="Clé FIDO2/WebAuthn"
+              />
+              <Fingerprint
+                className="w-4 h-4 hover:text-blue-400 hover:scale-125 transition-all duration-200 cursor-pointer"
+                aria-label="Données Biométriques"
+              />
+              <QrCode
+                className="w-4 h-4 hover:text-blue-400 hover:scale-125 transition-all duration-200 cursor-pointer"
+                aria-label="Code à usage unique"
+              />
             </div>
           </div>
         </div>
@@ -294,11 +354,34 @@ export default function LoginView({ onLoginSuccess, isDarkMode, toggleTheme }: L
       {/* Footer bar - Absolutely Positioned at Bottom */}
       <footer className="absolute bottom-0 left-0 right-0 w-full py-4 px-8 border-t border-slate-900 bg-slate-950/80 backdrop-blur flex flex-col md:flex-row gap-2 justify-between items-center z-20 text-[10px] font-mono text-slate-500">
         <div>
-          v2.4.1 | Connexion aux logs : <span className="text-emerald-500 font-semibold">Active</span>
+          v2.4.1 | Connexion aux logs :{" "}
+          <span className="text-emerald-500 font-semibold">Active</span>
         </div>
         <div className="flex items-center gap-4">
-          <a href="#status" onClick={(e) => { e.preventDefault(); setError('Tous les systèmes sont opérationnels (Uptime SIEM 99.99%).'); }} className="hover:text-slate-300 hover:underline transition-all cursor-pointer">Statut Système</a>
-          <a href="#support" onClick={(e) => { e.preventDefault(); setError('Contactez l\'ingénieur de garde SOC au +33 1 42 27 00 00.'); }} className="hover:text-slate-300 hover:underline transition-all cursor-pointer">Support Technique</a>
+          <a
+            href="#status"
+            onClick={(e) => {
+              e.preventDefault();
+              setError(
+                "Tous les systèmes sont opérationnels (Uptime SIEM 99.99%).",
+              );
+            }}
+            className="hover:text-slate-300 hover:underline transition-all cursor-pointer"
+          >
+            Statut Système
+          </a>
+          <a
+            href="#support"
+            onClick={(e) => {
+              e.preventDefault();
+              setError(
+                "Contactez l'ingénieur de garde SOC au +33 1 42 27 00 00.",
+              );
+            }}
+            className="hover:text-slate-300 hover:underline transition-all cursor-pointer"
+          >
+            Support Technique
+          </a>
         </div>
       </footer>
     </div>

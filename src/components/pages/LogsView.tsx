@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState } from "react";
 import {
   Search,
   Terminal,
@@ -17,28 +17,28 @@ import {
   RefreshCw,
   SlidersHorizontal,
   Clock,
-  Activity
-} from 'lucide-react';
-import api from '../../Services/api';
-import type { SecurityLog } from '../../types';
+  Activity,
+} from "lucide-react";
+import api from "../../Services/api";
+import type { LogEvent } from "../../types";
 
 export default function LogsView() {
-  const [logs, setLogs] = useState<SecurityLog[]>([]);
+  const [logs, setLogs] = useState<LogEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [searching, setSearching] = useState(false);
-  
+
   // Advanced search form inputs
-  const [ipHostInput, setIpHostInput] = useState('');
-  const [userInput, setUserInput] = useState('');
-  const [logTypeInput, setLogTypeInput] = useState('ALL');
-  const [severityFilter, setSeverityFilter] = useState('ALL');
-  const [timeRange, setTimeRange] = useState('24h');
+  const [ipHostInput, setIpHostInput] = useState("");
+  const [userInput, setUserInput] = useState("");
+  const [logTypeInput, setLogTypeInput] = useState("ALL");
+  const [severityFilter, setSeverityFilter] = useState("ALL");
+  const [timeRange, setTimeRange] = useState("24h");
 
   // Applied filters (triggered by clicking "Lancer la recherche")
-  const [appliedIpHost, setAppliedIpHost] = useState('');
-  const [appliedUser, setAppliedUser] = useState('');
-  const [appliedLogType, setAppliedLogType] = useState('ALL');
-  const [appliedSeverity, setAppliedSeverity] = useState('ALL');
+  const [appliedIpHost, setAppliedIpHost] = useState("");
+  const [appliedUser, setAppliedUser] = useState("");
+  const [appliedLogType, setAppliedLogType] = useState("ALL");
+  const [appliedSeverity, setAppliedSeverity] = useState("ALL");
 
   const [selectedLogId, setSelectedLogId] = useState<string | null>(null);
 
@@ -48,7 +48,7 @@ export default function LogsView() {
         const res = await api.getLogs();
         setLogs(res);
       } catch (err) {
-        console.error('Erreur chargement logs', err);
+        console.error("Erreur chargement logs", err);
       } finally {
         setLoading(false);
       }
@@ -69,19 +69,22 @@ export default function LogsView() {
   };
 
   const handleResetFilters = () => {
-    setIpHostInput('');
-    setUserInput('');
-    setLogTypeInput('ALL');
-    setSeverityFilter('ALL');
-    setAppliedIpHost('');
-    setAppliedUser('');
-    setAppliedLogType('ALL');
-    setAppliedSeverity('ALL');
+    setIpHostInput("");
+    setUserInput("");
+    setLogTypeInput("ALL");
+    setSeverityFilter("ALL");
+    setAppliedIpHost("");
+    setAppliedUser("");
+    setAppliedLogType("ALL");
+    setAppliedSeverity("ALL");
   };
 
   if (loading) {
     return (
-      <div id="logs-loading" className="flex-1 flex items-center justify-center p-8">
+      <div
+        id="logs-loading"
+        className="flex-1 flex items-center justify-center p-8"
+      >
         <div className="w-10 h-10 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
       </div>
     );
@@ -89,33 +92,48 @@ export default function LogsView() {
 
   // Filter logs based on applied states
   const filteredLogs = logs.filter((log) => {
-    const matchesSeverity = appliedSeverity === 'ALL' || log.severity === appliedSeverity;
-    const matchesCategory = appliedLogType === 'ALL' || log.category === appliedLogType;
+    const matchesSeverity =
+      appliedSeverity === "ALL" || log.severity === appliedSeverity;
+    const matchesCategory =
+      appliedLogType === "ALL" || log.log_type === appliedLogType;
 
-    const ipText = `${log.source_ip} ${log.destination_ip} ${log.hostname}`.toLowerCase();
-    const matchesIpHost = !appliedIpHost || ipText.includes(appliedIpHost.toLowerCase());
+    const ipText =
+      `${log.source_ip} ${log.dest_ip || ""} ${log.host}`.toLowerCase();
+    const matchesIpHost =
+      !appliedIpHost || ipText.includes(appliedIpHost.toLowerCase());
 
-    const userText = `${log.username || ''}`.toLowerCase();
-    const matchesUser = !appliedUser || userText.includes(appliedUser.toLowerCase());
+    const userText = `${log.username || ""}`.toLowerCase();
+    const matchesUser =
+      !appliedUser || userText.includes(appliedUser.toLowerCase());
 
     return matchesSeverity && matchesCategory && matchesIpHost && matchesUser;
   });
 
   const handleExport = () => {
-    const dataStr = 'data:text/json;charset=utf-8,' + encodeURIComponent(JSON.stringify(filteredLogs, null, 2));
-    const downloadAnchor = document.createElement('a');
-    downloadAnchor.setAttribute('href', dataStr);
-    downloadAnchor.setAttribute('download', `SIEM_Export_Logs_${new Date().toISOString().slice(0,10)}.json`);
+    const dataStr =
+      "data:text/json;charset=utf-8," +
+      encodeURIComponent(JSON.stringify(filteredLogs, null, 2));
+    const downloadAnchor = document.createElement("a");
+    downloadAnchor.setAttribute("href", dataStr);
+    downloadAnchor.setAttribute(
+      "download",
+      `SIEM_Export_Logs_${new Date().toISOString().slice(0, 10)}.json`,
+    );
     document.body.appendChild(downloadAnchor);
     downloadAnchor.click();
     downloadAnchor.remove();
   };
 
   return (
-    <div id="logs-view-container" className="p-5 space-y-4 h-full flex flex-col overflow-hidden pb-16">
-      
+    <div
+      id="logs-view-container"
+      className="p-5 space-y-4 h-full flex flex-col overflow-hidden pb-16"
+    >
       {/* 1. MOTEUR DE RECHERCHE AVANCÉ CARD */}
-      <div id="logs-search-panel" className="p-5 rounded-xl border bg-white dark:bg-[#1E293B] border-slate-200 dark:border-slate-800 shadow-sm space-y-4 relative">
+      <div
+        id="logs-search-panel"
+        className="p-5 rounded-xl border bg-white dark:bg-[#1E293B] border-slate-200 dark:border-slate-800 shadow-sm space-y-4 relative"
+      >
         <div className="flex items-center justify-between">
           <div>
             <h4 className="font-bold text-sm text-slate-900 dark:text-slate-100 flex items-center gap-2">
@@ -123,7 +141,8 @@ export default function LogsView() {
               <span>Moteur de recherche avancé</span>
             </h4>
             <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5">
-              Interrogez des millions de logs bruts à l'aide de filtres ou de requêtes textuelles.
+              Interrogez des millions de logs bruts à l'aide de filtres ou de
+              requêtes textuelles.
             </p>
           </div>
 
@@ -141,7 +160,10 @@ export default function LogsView() {
           </button>
         </div>
 
-        <form onSubmit={handleSearchTrigger} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-3.5">
+        <form
+          onSubmit={handleSearchTrigger}
+          className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-3.5"
+        >
           {/* IP / Host field */}
           <div className="space-y-1">
             <label className="text-[10px] font-mono font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 flex items-center gap-1.5">
@@ -184,10 +206,11 @@ export default function LogsView() {
               className="w-full px-3 py-2 rounded-lg border text-xs bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-850 text-slate-800 dark:text-slate-200 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20 transition-all font-mono cursor-pointer appearance-none"
             >
               <option value="ALL">Tous les logs</option>
-              <option value="auth">Authentication</option>
-              <option value="network">Network Logs</option>
-              <option value="endpoint">Endpoint Activity</option>
-              <option value="dns">DNS Resolution</option>
+              <option value="auth">Authentification</option>
+              <option value="network">Réseau</option>
+              <option value="system">Système</option>
+              <option value="application">Application</option>
+              <option value="audit">Audit</option>
             </select>
           </div>
 
@@ -215,20 +238,23 @@ export default function LogsView() {
               <Clock className="w-3 h-3 text-slate-400" />
               <span>Criticité</span>
             </label>
-            <div className="grid grid-cols-3 gap-1">
+            <div className="grid grid-cols-4 gap-1">
               {[
-                { id: 'LOW', label: 'Basse' },
-                { id: 'MEDIUM', label: 'Moy.' },
-                { id: 'HIGH', label: 'Haute' }
+                { id: "info", label: "Info" },
+                { id: "warning", label: "Avert." },
+                { id: "high", label: "Haute" },
+                { id: "critical", label: "Crit." },
               ].map((c) => (
                 <button
                   type="button"
                   key={c.id}
-                  onClick={() => setSeverityFilter(severityFilter === c.id ? 'ALL' : c.id)}
+                  onClick={() =>
+                    setSeverityFilter(severityFilter === c.id ? "ALL" : c.id)
+                  }
                   className={`py-2 rounded-lg text-[10px] font-bold uppercase border transition-all cursor-pointer ${
                     severityFilter === c.id
-                      ? 'bg-blue-500 text-white border-blue-500 shadow-md shadow-blue-500/10'
-                      : 'bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-850 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-900/60'
+                      ? "bg-blue-500 text-white border-blue-500 shadow-md shadow-blue-500/10"
+                      : "bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-850 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-900/60"
                   }`}
                 >
                   {c.label}
@@ -246,7 +272,10 @@ export default function LogsView() {
       </div>
 
       {/* 2. TIMELINE DES ÉVÉNEMENTS CARD */}
-      <div id="logs-timeline-panel" className="p-4 rounded-xl border bg-white dark:bg-[#1E293B] border-slate-200 dark:border-slate-800 shadow-sm space-y-3.5">
+      <div
+        id="logs-timeline-panel"
+        className="p-4 rounded-xl border bg-white dark:bg-[#1E293B] border-slate-200 dark:border-slate-800 shadow-sm space-y-3.5"
+      >
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Activity className="w-4 h-4 text-slate-500 dark:text-slate-400" />
@@ -275,56 +304,78 @@ export default function LogsView() {
         {/* Timeline Line & Nodes, Matching Mockup Perfectly */}
         <div className="relative pt-6 pb-2 px-10">
           <div className="absolute top-1/2 left-10 right-10 h-0.5 bg-slate-200 dark:bg-slate-850 -translate-y-1/2"></div>
-          
+
           <div className="relative flex justify-between items-center z-10">
             {/* Node 00:00 */}
             <div className="flex flex-col items-center">
-              <button 
-                onClick={() => { setSeverityFilter('LOW'); handleSearchTrigger(); }}
-                className="w-3.5 h-3.5 rounded-full bg-blue-500 border-2 border-white dark:border-slate-800 shadow hover:scale-125 transition-all cursor-pointer" 
-                title="Sévérité basse"
+              <button
+                onClick={() => {
+                  setSeverityFilter("info");
+                  handleSearchTrigger();
+                }}
+                className="w-3.5 h-3.5 rounded-full bg-blue-500 border-2 border-white dark:border-slate-800 shadow hover:scale-125 transition-all cursor-pointer"
+                title="Sévérité info"
               ></button>
-              <span className="text-[10px] font-mono text-slate-400 mt-2">00:00</span>
+              <span className="text-[10px] font-mono text-slate-400 mt-2">
+                00:00
+              </span>
             </div>
 
             {/* Node 07:00 (Pulsing critical spike from the screenshot) */}
             <div className="flex flex-col items-center -translate-y-2">
-              <button 
-                onClick={() => { setSeverityFilter('HIGH'); handleSearchTrigger(); }}
+              <button
+                onClick={() => {
+                  setSeverityFilter("high");
+                  handleSearchTrigger();
+                }}
                 className="px-3 py-1 bg-red-600 hover:bg-red-500 text-white font-mono text-[9px] font-extrabold rounded-full shadow-lg shadow-red-500/20 border-2 border-white dark:border-slate-800 animate-bounce flex items-center gap-1.5 cursor-pointer"
               >
                 <span className="w-1.5 h-1.5 rounded-full bg-white animate-ping"></span>
                 <span>1,284 ALERTES</span>
               </button>
-              <span className="text-[10px] font-mono text-slate-400 mt-2">07:00</span>
+              <span className="text-[10px] font-mono text-slate-400 mt-2">
+                07:00
+              </span>
             </div>
 
             {/* Node 15:00 */}
             <div className="flex flex-col items-center">
-              <button 
-                onClick={() => { setSeverityFilter('MEDIUM'); handleSearchTrigger(); }}
+              <button
+                onClick={() => {
+                  setSeverityFilter("warning");
+                  handleSearchTrigger();
+                }}
                 className="w-3.5 h-3.5 rounded-full bg-orange-500 border-2 border-white dark:border-slate-800 shadow hover:scale-125 transition-all cursor-pointer"
-                title="Sévérité moyenne"
+                title="Sévérité warning"
               ></button>
-              <span className="text-[10px] font-mono text-slate-400 mt-2">15:00</span>
+              <span className="text-[10px] font-mono text-slate-400 mt-2">
+                15:00
+              </span>
             </div>
 
             {/* Node 23:59 */}
             <div className="flex flex-col items-center">
-              <button 
-                onClick={() => { setSeverityFilter('ALL'); handleSearchTrigger(); }}
+              <button
+                onClick={() => {
+                  setSeverityFilter("ALL");
+                  handleSearchTrigger();
+                }}
                 className="w-3.5 h-3.5 rounded-full bg-blue-500 border-2 border-white dark:border-slate-800 shadow hover:scale-125 transition-all cursor-pointer"
                 title="Tous les événements"
               ></button>
-              <span className="text-[10px] font-mono text-slate-400 mt-2">23:59</span>
+              <span className="text-[10px] font-mono text-slate-400 mt-2">
+                23:59
+              </span>
             </div>
           </div>
         </div>
       </div>
 
       {/* 3. LOGS RESULTS PANEL */}
-      <div id="logs-results-panel" className="flex-1 border bg-white dark:bg-[#1E293B] border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden flex flex-col shadow-sm">
-        
+      <div
+        id="logs-results-panel"
+        className="flex-1 border bg-white dark:bg-[#1E293B] border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden flex flex-col shadow-sm"
+      >
         {/* Table Header Controls */}
         <div className="px-5 py-3.5 border-b border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/10 flex items-center justify-between shrink-0">
           <div className="flex items-center gap-3">
@@ -375,64 +426,111 @@ export default function LogsView() {
                 <tr>
                   <td colSpan={7} className="py-12 text-center text-slate-400">
                     <Terminal className="w-8 h-8 text-slate-300 dark:text-slate-700 mx-auto mb-3 animate-pulse" />
-                    <span>Aucun log brut ne correspond aux filtres saisis.</span>
+                    <span>
+                      Aucun log brut ne correspond aux filtres saisis.
+                    </span>
                   </td>
                 </tr>
               ) : (
                 filteredLogs.map((log) => {
-                  const isExpanded = selectedLogId === log.id;
+                  const isExpanded = selectedLogId === log.raw_log_id;
 
                   // Severity tags colors based on standard levels
                   const severityConfig =
-                    log.severity === 'CRITICAL'
-                      ? { text: 'Critique', style: 'text-red-500 bg-red-500/10 border-red-500/20' }
-                      : log.severity === 'HIGH'
-                      ? { text: 'Haute', style: 'text-orange-500 bg-orange-500/10 border-orange-500/20' }
-                      : log.severity === 'MEDIUM'
-                      ? { text: 'Moyenne', style: 'text-amber-500 bg-amber-500/10 border-amber-500/20' }
-                      : { text: 'Basse', style: 'text-blue-500 bg-blue-500/10 border-blue-500/20' };
+                    log.severity === "critical"
+                      ? {
+                          text: "Critique",
+                          style: "text-red-500 bg-red-500/10 border-red-500/20",
+                        }
+                      : log.severity === "high"
+                        ? {
+                            text: "Haute",
+                            style:
+                              "text-orange-500 bg-orange-500/10 border-orange-500/20",
+                          }
+                        : log.severity === "warning"
+                          ? {
+                              text: "Avert.",
+                              style:
+                                "text-amber-500 bg-amber-500/10 border-amber-500/20",
+                            }
+                          : {
+                              text: "Info",
+                              style:
+                                "text-blue-500 bg-blue-500/10 border-blue-500/20",
+                            };
 
-                  // Custom type tags mirroring the logos and colors from the mockup
+                  // Custom type tags based on log_type
                   const logTypeBadge = () => {
-                    if (log.category === 'endpoint') {
-                      return <span className="px-2 py-0.5 rounded text-[9px] font-mono font-bold uppercase text-red-600 dark:text-red-400 bg-red-100/50 dark:bg-red-950/30 border border-red-200 dark:border-red-900/20">MAXA LEAK</span>;
-                    } else if (log.category === 'auth') {
-                      return <span className="px-2 py-0.5 rounded text-[9px] font-mono font-bold uppercase text-orange-600 dark:text-orange-400 bg-orange-100/50 dark:bg-orange-950/30 border border-orange-200 dark:border-orange-900/20">SECURITY</span>;
-                    } else if (log.category === 'dns') {
-                      return <span className="px-2 py-0.5 rounded text-[9px] font-mono font-bold uppercase text-blue-600 dark:text-blue-400 bg-blue-100/50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-900/20">SYSTEM</span>;
+                    if (log.log_type === "auth") {
+                      return (
+                        <span className="px-2 py-0.5 rounded text-[9px] font-mono font-bold uppercase text-orange-600 dark:text-orange-400 bg-orange-100/50 dark:bg-orange-950/30 border border-orange-200 dark:border-orange-900/20">
+                          SECURITY
+                        </span>
+                      );
+                    } else if (log.log_type === "network") {
+                      return (
+                        <span className="px-2 py-0.5 rounded text-[9px] font-mono font-bold uppercase text-emerald-600 dark:text-emerald-400 bg-emerald-100/50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-900/20">
+                          FIREWALL
+                        </span>
+                      );
+                    } else if (log.log_type === "system") {
+                      return (
+                        <span className="px-2 py-0.5 rounded text-[9px] font-mono font-bold uppercase text-blue-600 dark:text-blue-400 bg-blue-100/50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-900/20">
+                          SYSTEM
+                        </span>
+                      );
+                    } else if (log.log_type === "application") {
+                      return (
+                        <span className="px-2 py-0.5 rounded text-[9px] font-mono font-bold uppercase text-red-600 dark:text-red-400 bg-red-100/50 dark:bg-red-950/30 border border-red-200 dark:border-red-900/20">
+                          APP
+                        </span>
+                      );
                     } else {
-                      return <span className="px-2 py-0.5 rounded text-[9px] font-mono font-bold uppercase text-emerald-600 dark:text-emerald-400 bg-emerald-100/50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-900/20">FIREWALL</span>;
+                      return (
+                        <span className="px-2 py-0.5 rounded text-[9px] font-mono font-bold uppercase text-purple-600 dark:text-purple-400 bg-purple-100/50 dark:bg-purple-950/30 border border-purple-200 dark:border-purple-900/20">
+                          AUDIT
+                        </span>
+                      );
                     }
                   };
 
                   return (
-                    <React.Fragment key={log.id}>
+                    <React.Fragment key={log.raw_log_id}>
                       <tr
-                        onClick={() => setSelectedLogId(isExpanded ? null : log.id)}
+                        onClick={() =>
+                          setSelectedLogId(isExpanded ? null : log.raw_log_id)
+                        }
                         className={`hover:bg-slate-50 dark:hover:bg-slate-800/20 transition-all cursor-pointer ${
-                          isExpanded ? 'bg-slate-50 dark:bg-slate-800/10' : ''
+                          isExpanded ? "bg-slate-50 dark:bg-slate-800/10" : ""
                         }`}
                       >
                         <td className="py-2.5 px-6 text-center text-slate-400 shrink-0 select-none">
-                          {isExpanded ? <ChevronUp className="w-3.5 h-3.5 text-blue-500" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                          {isExpanded ? (
+                            <ChevronUp className="w-3.5 h-3.5 text-blue-500" />
+                          ) : (
+                            <ChevronDown className="w-3.5 h-3.5" />
+                          )}
                         </td>
                         <td className="py-2.5 px-4 text-slate-400 text-[11px] font-medium">
-                          {new Date(log.timestamp).toLocaleString()}
+                          {new Date(log["@timestamp"]).toLocaleString()}
                         </td>
                         <td className="py-2.5 px-4 text-center font-bold">
                           {logTypeBadge()}
                         </td>
                         <td className="py-2.5 px-4 truncate max-w-sm text-slate-800 dark:text-slate-200 font-sans font-medium text-xs">
-                          {log.message}
+                          {log.raw_message}
                         </td>
                         <td className="py-2.5 px-4 font-bold text-slate-600 dark:text-slate-450">
                           {log.source_ip}
                         </td>
                         <td className="py-2.5 px-4 font-semibold text-slate-500 dark:text-slate-400">
-                          {log.username || 'system_root'}
+                          {log.username || "system_root"}
                         </td>
                         <td className="py-2.5 px-4 text-center">
-                          <span className={`px-2.5 py-0.5 rounded-full text-[9px] font-bold border ${severityConfig.style}`}>
+                          <span
+                            className={`px-2.5 py-0.5 rounded-full text-[9px] font-bold border ${severityConfig.style}`}
+                          >
                             {severityConfig.text}
                           </span>
                         </td>
@@ -441,11 +539,20 @@ export default function LogsView() {
                       {/* Expandable JSON Detail View */}
                       {isExpanded && (
                         <tr>
-                          <td colSpan={7} className="p-0 bg-slate-50/50 dark:bg-slate-900/10">
+                          <td
+                            colSpan={7}
+                            className="p-0 bg-slate-50/50 dark:bg-slate-900/10"
+                          >
                             <div className="px-12 py-5 border-t border-b border-slate-100 dark:border-slate-800/60 text-slate-850 dark:text-slate-200 font-mono text-[11px] leading-relaxed">
                               <div className="flex items-center justify-between mb-3 text-[10px] uppercase text-slate-400 dark:text-slate-500 font-bold tracking-wider">
-                                <span>Informations détaillées du document de log (Elasticsearch Entry)</span>
-                                <span className="flex items-center gap-1.5"><Eye className="w-3.5 h-3.5" /> ELASTIC_INDEX_READY</span>
+                                <span>
+                                  Informations détaillées du document de log
+                                  (Elasticsearch Entry)
+                                </span>
+                                <span className="flex items-center gap-1.5">
+                                  <Eye className="w-3.5 h-3.5" />{" "}
+                                  ELASTIC_INDEX_READY
+                                </span>
                               </div>
                               <pre className="bg-white dark:bg-slate-950 p-4 rounded-xl border border-slate-200 dark:border-slate-800 overflow-x-auto text-slate-800 dark:text-slate-300 max-h-60 shadow-inner">
                                 {JSON.stringify(log, null, 2)}

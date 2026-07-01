@@ -1,24 +1,28 @@
+// src/components/pages/RulesView.tsx
 /**
  * @license
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState } from "react";
 import {
   Shield,
   Plus,
   Search,
   CheckCircle2,
   XCircle,
-  Clock,
-  Code,
   AlertTriangle,
   Lock,
-  X
-} from 'lucide-react';
-import api from '../../Services/api';
-import type { CorrelationRule, UserRole } from '../../types';
-import { RBAC_POLICIES } from '../../utils/rbac';
+  X,
+} from "lucide-react";
+import api from "../../Services/api";
+import type {
+  CorrelationRule,
+  UserRole,
+  RuleType,
+  SeverityLevel,
+} from "../../types";
+import { RBAC_POLICIES } from "../../utils/rbac";
 
 interface RulesViewProps {
   activeRole: UserRole;
@@ -27,15 +31,25 @@ interface RulesViewProps {
 export default function RulesView({ activeRole }: RulesViewProps) {
   const [rules, setRules] = useState<CorrelationRule[]>([]);
   const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState('');
-  
+  const [search, setSearch] = useState("");
+
   // Create rule form states
   const [showModal, setShowModal] = useState(false);
-  const [name, setName] = useState('');
-  const [description, setDescription] = useState('');
-  const [query, setQuery] = useState('');
-  const [severity, setSeverity] = useState<'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL'>('MEDIUM');
-  const [category, setCategory] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [formError, setFormError] = useState("");
+
+  // ✅ États du formulaire (nouveaux champs)
+  const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
+  const [ruleType, setRuleType] = useState<RuleType>("threshold");
+  const [conditions, setConditions] = useState("{\n  \n}");
+  const [timeWindowSeconds, setTimeWindowSeconds] = useState("300");
+  const [thresholdCount, setThresholdCount] = useState("5");
+  const [alertLevel, setAlertLevel] = useState<SeverityLevel>("warning");
+  const [confidenceScore, setConfidenceScore] = useState("75");
+  const [mitreTactic, setMitreTactic] = useState("");
+  const [mitreTechnique, setMitreTechnique] = useState("");
+  const [playbookId, setPlaybookId] = useState("");
 
   const canEdit = RBAC_POLICIES[activeRole].canEditRules;
 
@@ -45,7 +59,7 @@ export default function RulesView({ activeRole }: RulesViewProps) {
         const res = await api.getRules();
         setRules(res);
       } catch (err) {
-        console.error('Erreur chargement règles de corrélation', err);
+        console.error("Erreur chargement règles de corrélation", err);
       } finally {
         setLoading(false);
       }
@@ -56,61 +70,131 @@ export default function RulesView({ activeRole }: RulesViewProps) {
   const handleToggle = async (id: string) => {
     if (!canEdit) return;
     try {
-      const updated = await api.toggleRule(id, 'Dominique', activeRole);
+      const updated = await api.toggleRule(id, "Dominique", activeRole);
       setRules((prev) => prev.map((r) => (r.id === id ? updated : r)));
     } catch (err) {
-      console.error('Erreur bascule statut règle', err);
+      console.error("Erreur bascule statut règle", err);
     }
   };
 
+  // ✅ Fonction de création de règle améliorée avec validation
   const handleCreateRule = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name.trim() || !query.trim()) return;
+    setFormError("");
+    setIsSubmitting(true);
+
+    // ✅ Validations
+    if (!name.trim()) {
+      setFormError("Le nom de la règle est obligatoire.");
+      setIsSubmitting(false);
+      return;
+    }
+
+    let parsedConditions: Record<string, unknown>;
+    try {
+      parsedConditions = JSON.parse(conditions);
+    } catch {
+      setFormError("Les conditions doivent être un JSON valide.");
+      setIsSubmitting(false);
+      return;
+    }
 
     try {
       const newRule = await api.addRule(
         {
-          name,
-          description,
-          query,
-          severity,
+          name: name.trim(),
+          description: description.trim() || "Aucune description",
+          rule_type: ruleType,
+          conditions: parsedConditions,
+          time_window_seconds: timeWindowSeconds
+            ? parseInt(timeWindowSeconds, 10)
+            : undefined,
+          threshold_count: thresholdCount
+            ? parseInt(thresholdCount, 10)
+            : undefined,
+          alert_level: alertLevel,
+          confidence_score: parseInt(confidenceScore, 10) || 0,
+          mitre_tactic: mitreTactic.trim() || undefined,
+          mitre_technique: mitreTechnique.trim() || undefined,
+          playbook_id: playbookId.trim() || undefined,
           is_active: true,
-          category: category || 'General',
-          created_by: 'Dominique'
         },
-        'Dominique',
-        activeRole
+        "Dominique",
+        activeRole,
       );
+
+      // ✅ Ajouter la nouvelle règle en haut de la liste
       setRules((prev) => [newRule, ...prev]);
+
+      // ✅ Réinitialiser le formulaire
+      resetForm();
       setShowModal(false);
-      // reset form
-      setName('');
-      setDescription('');
-      setQuery('');
-      setSeverity('MEDIUM');
-      setCategory('');
-    } catch (err) {
-      console.error('Erreur création de règle', err);
+      setFormError("");
+    } catch (err: unknown) {
+      console.error("Erreur création de règle", err);
+      setFormError(
+        err instanceof Error
+          ? err.message
+          : "Erreur lors de la création de la règle. Veuillez réessayer.",
+      );
+    } finally {
+      setIsSubmitting(false);
     }
+  };
+
+  // ✅ Fonction pour réinitialiser le formulaire
+  const resetForm = () => {
+    setName("");
+    setDescription("");
+    setRuleType("threshold");
+    setConditions("{\n  \n}");
+    setTimeWindowSeconds("300");
+    setThresholdCount("5");
+    setAlertLevel("warning");
+    setConfidenceScore("75");
+    setMitreTactic("");
+    setMitreTechnique("");
+    setPlaybookId("");
+    setFormError("");
   };
 
   if (loading) {
     return (
-      <div id="rules-loading" className="flex-1 flex items-center justify-center p-8 h-full">
+      <div
+        id="rules-loading"
+        className="flex-1 flex items-center justify-center p-8 h-full"
+      >
         <div className="w-10 h-10 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
       </div>
     );
   }
 
   const filteredRules = rules.filter((rule) => {
-    return rule.name.toLowerCase().includes(search.toLowerCase()) || 
-           rule.description.toLowerCase().includes(search.toLowerCase()) || 
-           rule.category.toLowerCase().includes(search.toLowerCase());
+    return (
+      rule.name.toLowerCase().includes(search.toLowerCase()) ||
+      rule.description.toLowerCase().includes(search.toLowerCase())
+    );
   });
 
+  // Badge styles for rule_type
+  const ruleTypeBadge = (rt: RuleType) => {
+    switch (rt) {
+      case "threshold":
+        return "text-blue-500 bg-blue-500/10 border-blue-500/20";
+      case "pattern":
+        return "text-purple-500 bg-purple-500/10 border-purple-500/20";
+      case "behavioral":
+        return "text-amber-500 bg-amber-500/10 border-amber-500/20";
+      case "composite":
+        return "text-rose-500 bg-rose-500/10 border-rose-500/20";
+    }
+  };
+
   return (
-    <div id="rules-view" className="p-6 space-y-6 overflow-y-auto h-full pb-16 relative">
-      
+    <div
+      id="rules-view"
+      className="p-6 space-y-6 overflow-y-auto h-full pb-16 relative"
+    >
       {/* Search and Action Bar */}
       <div className="bg-white dark:bg-[#1E293B] p-5 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div className="space-y-1">
@@ -119,7 +203,8 @@ export default function RulesView({ activeRole }: RulesViewProps) {
             <span>Moteur de Corrélation & Détection</span>
           </h4>
           <p className="text-xs text-slate-400 dark:text-slate-500">
-            Configurez des règles d'alerte en continu sur les flux ElasticSearch indexés par le SIEM.
+            Configurez des règles d'alerte en continu sur les flux ElasticSearch
+            indexés par le SIEM.
           </p>
         </div>
 
@@ -136,7 +221,10 @@ export default function RulesView({ activeRole }: RulesViewProps) {
           </div>
 
           <button
-            onClick={() => setShowModal(true)}
+            onClick={() => {
+              resetForm();
+              setShowModal(true);
+            }}
             disabled={!canEdit}
             className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 disabled:bg-slate-300 dark:disabled:bg-slate-800 text-white font-bold text-xs transition-all active:scale-95 cursor-pointer disabled:cursor-not-allowed shadow-md hover:shadow-blue-500/20"
           >
@@ -155,34 +243,42 @@ export default function RulesView({ activeRole }: RulesViewProps) {
           </div>
         ) : (
           filteredRules.map((rule) => {
-            const sevColors = 
-              rule.severity === 'CRITICAL' ? 'text-red-500 bg-red-500/10 border-red-500/20' :
-              rule.severity === 'HIGH' ? 'text-orange-500 bg-orange-500/10 border-orange-500/20' :
-              rule.severity === 'MEDIUM' ? 'text-amber-500 bg-amber-500/10 border-amber-500/20' :
-              'text-blue-500 bg-blue-500/10 border-blue-500/20';
+            const sevColors =
+              rule.alert_level === "critical"
+                ? "text-red-500 bg-red-500/10 border-red-500/20"
+                : rule.alert_level === "high"
+                  ? "text-orange-500 bg-orange-500/10 border-orange-500/20"
+                  : rule.alert_level === "warning"
+                    ? "text-amber-500 bg-amber-500/10 border-amber-500/20"
+                    : "text-blue-500 bg-blue-500/10 border-blue-500/20";
 
             return (
-              <div 
-                key={rule.id} 
+              <div
+                key={rule.id}
                 className={`bg-white dark:bg-[#1E293B] p-5 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm transition-all relative overflow-hidden ${
-                  !rule.is_active ? 'opacity-70' : ''
+                  !rule.is_active ? "opacity-70" : ""
                 }`}
               >
                 {/* Visual Status strip */}
-                <div className={`absolute left-0 inset-y-0 w-1 ${rule.is_active ? 'bg-blue-500' : 'bg-slate-300'}`}></div>
+                <div
+                  className={`absolute left-0 inset-y-0 w-1 ${rule.is_active ? "bg-blue-500" : "bg-slate-300"}`}
+                ></div>
 
                 <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
-                  
                   <div className="space-y-2 flex-1">
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="text-[10px] font-mono font-bold text-slate-400">
                         {rule.id}
                       </span>
-                      <span className={`px-2 py-0.5 rounded text-[9px] font-mono font-bold border uppercase ${sevColors}`}>
-                        {rule.severity}
+                      <span
+                        className={`px-2 py-0.5 rounded text-[9px] font-mono font-bold border uppercase ${sevColors}`}
+                      >
+                        {rule.alert_level}
                       </span>
-                      <span className="px-2 py-0.5 rounded text-[9px] font-mono font-bold border border-slate-100 dark:border-slate-800 text-slate-450 uppercase">
-                        {rule.category}
+                      <span
+                        className={`px-2 py-0.5 rounded text-[9px] font-mono font-bold border uppercase ${ruleTypeBadge(rule.rule_type)}`}
+                      >
+                        {rule.rule_type}
                       </span>
                       <h5 className="font-bold text-sm text-slate-900 dark:text-slate-100 flex-1 min-w-[200px]">
                         {rule.name}
@@ -193,12 +289,36 @@ export default function RulesView({ activeRole }: RulesViewProps) {
                       {rule.description}
                     </p>
 
-                    {/* Elasticsearch expression code block */}
-                    <div className="bg-slate-50 dark:bg-slate-950 p-3 rounded-lg border border-slate-200 dark:border-slate-850 flex items-start gap-2.5 font-mono text-[11px] leading-relaxed">
-                      <Code className="w-4 h-4 text-blue-500 mt-0.5 shrink-0" />
-                      <pre className="text-slate-700 dark:text-slate-300 overflow-x-auto whitespace-pre-wrap break-all select-all flex-1">
-                        {rule.query}
-                      </pre>
+                    {/* Conditions / MITRE / Confidence row */}
+                    <div className="flex flex-wrap items-center gap-3 mt-2">
+                      {rule.confidence_score > 0 && (
+                        <span className="text-[10px] font-mono font-bold text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-900 px-2 py-0.5 rounded">
+                          Score: {rule.confidence_score}/100
+                        </span>
+                      )}
+                      {rule.mitre_tactic && (
+                        <span className="text-[10px] font-mono font-bold text-purple-500 bg-purple-500/10 border border-purple-500/20 px-2 py-0.5 rounded">
+                          MITRE: {rule.mitre_tactic}
+                          {rule.mitre_technique
+                            ? ` / ${rule.mitre_technique}`
+                            : ""}
+                        </span>
+                      )}
+                      {rule.time_window_seconds && (
+                        <span className="text-[10px] font-mono text-slate-400">
+                          Fenêtre: {rule.time_window_seconds}s
+                        </span>
+                      )}
+                      {rule.threshold_count && (
+                        <span className="text-[10px] font-mono text-slate-400">
+                          Seuil: {rule.threshold_count}
+                        </span>
+                      )}
+                      {rule.playbook_id && (
+                        <span className="text-[10px] font-mono text-blue-400">
+                          Playbook: {rule.playbook_id}
+                        </span>
+                      )}
                     </div>
                   </div>
 
@@ -211,7 +331,7 @@ export default function RulesView({ activeRole }: RulesViewProps) {
                         <XCircle className="w-4 h-4 text-slate-400" />
                       )}
                       <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-slate-450">
-                        {rule.is_active ? 'Actif' : 'Désactivé'}
+                        {rule.is_active ? "Actif" : "Désactivé"}
                       </span>
                     </div>
 
@@ -219,12 +339,12 @@ export default function RulesView({ activeRole }: RulesViewProps) {
                       <button
                         onClick={() => handleToggle(rule.id)}
                         className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                          rule.is_active 
-                            ? 'bg-rose-500/10 text-rose-500 border border-rose-500/20 hover:bg-rose-500 hover:text-white' 
-                            : 'bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 hover:bg-emerald-500 hover:text-white'
+                          rule.is_active
+                            ? "bg-rose-500/10 text-rose-500 border border-rose-500/20 hover:bg-rose-500 hover:text-white"
+                            : "bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 hover:bg-emerald-500 hover:text-white"
                         }`}
                       >
-                        {rule.is_active ? 'Désactiver' : 'Activer'}
+                        {rule.is_active ? "Désactiver" : "Activer"}
                       </button>
                     ) : (
                       <div className="flex items-center gap-1 text-[10px] text-slate-400 font-bold uppercase font-mono bg-slate-100 dark:bg-slate-900 px-2 py-1 rounded">
@@ -233,121 +353,260 @@ export default function RulesView({ activeRole }: RulesViewProps) {
                       </div>
                     )}
                   </div>
-
                 </div>
 
                 <div className="flex items-center justify-between border-t border-slate-100 dark:border-slate-800/60 pt-3 mt-4 text-[10px] font-mono text-slate-400">
                   <span>Créé par: {rule.created_by}</span>
-                  <div className="flex items-center gap-1">
-                    <Clock className="w-3.5 h-3.5" />
-                    <span>Configuré le: {new Date(rule.created_at).toLocaleDateString()}</span>
-                  </div>
+                  {rule.false_positive_count > 0 && (
+                    <div className="flex items-center gap-1">
+                      <AlertTriangle className="w-3.5 h-3.5" />
+                      <span>{rule.false_positive_count} faux positifs</span>
+                    </div>
+                  )}
                 </div>
-
               </div>
             );
           })
         )}
       </div>
 
-      {/* CREATE RULE MODAL DIALOG */}
+      {/* ✅ CREATE RULE MODAL DIALOG - NOUVEAUX CHAMPS */}
       {showModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-sm">
-          <div className="bg-white dark:bg-[#1E293B] w-full max-w-lg rounded-xl border border-slate-200 dark:border-slate-800 shadow-2xl p-6 space-y-4">
+          <div className="bg-white dark:bg-[#1E293B] w-full max-w-lg rounded-xl border border-slate-200 dark:border-slate-800 shadow-2xl p-6 space-y-4 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800/60 pb-3">
               <h4 className="font-bold text-sm text-slate-900 dark:text-slate-100 flex items-center gap-2">
                 <Shield className="w-4 h-4 text-blue-500" />
                 <span>Nouvelle règle de corrélation</span>
               </h4>
-              <button 
-                onClick={() => setShowModal(false)}
+              <button
+                onClick={() => {
+                  setShowModal(false);
+                  resetForm();
+                  setFormError("");
+                }}
                 className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer"
               >
                 <X className="w-4.5 h-4.5" />
               </button>
             </div>
 
+            {/* ✅ Affichage des erreurs */}
+            {formError && (
+              <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-xl flex items-start gap-2.5 text-xs text-red-400">
+                <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+                <span>{formError}</span>
+              </div>
+            )}
+
             <form onSubmit={handleCreateRule} className="space-y-3">
               <div className="space-y-1">
-                <label className="text-[10px] font-bold font-mono text-slate-450 uppercase">Nom de la règle</label>
+                <label className="text-[10px] font-bold font-mono text-slate-450 uppercase">
+                  Nom de la règle <span className="text-red-500">*</span>
+                </label>
                 <input
                   type="text"
                   required
                   placeholder="ex: Brute Force SSH détecté"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
-                  className="w-full px-3 py-2 rounded-lg border text-xs bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-850 text-slate-800 dark:text-slate-200 focus:outline-none focus:border-blue-500"
+                  disabled={isSubmitting}
+                  className="w-full px-3 py-2 rounded-lg border text-xs bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-850 text-slate-800 dark:text-slate-200 focus:outline-none focus:border-blue-500 disabled:opacity-50"
                 />
               </div>
 
               <div className="space-y-1">
-                <label className="text-[10px] font-bold font-mono text-slate-450 uppercase">Description</label>
+                <label className="text-[10px] font-bold font-mono text-slate-450 uppercase">
+                  Description
+                </label>
                 <textarea
                   placeholder="Expliquez la logique d'alerte..."
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
-                  className="w-full px-3 py-2 rounded-lg border text-xs bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-850 text-slate-800 dark:text-slate-200 focus:outline-none focus:border-blue-500 h-20 resize-none"
+                  disabled={isSubmitting}
+                  className="w-full px-3 py-2 rounded-lg border text-xs bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-850 text-slate-800 dark:text-slate-200 focus:outline-none focus:border-blue-500 h-20 resize-none disabled:opacity-50"
                 />
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1">
-                  <label className="text-[10px] font-bold font-mono text-slate-450 uppercase">Criticité d'alerte</label>
+                  <label className="text-[10px] font-bold font-mono text-slate-450 uppercase">
+                    Type de règle <span className="text-red-500">*</span>
+                  </label>
                   <select
-                    value={severity}
-                    onChange={(e) => setSeverity(e.target.value as any)}
-                    className="w-full px-3 py-2 rounded-lg border text-xs bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-850 text-slate-800 dark:text-slate-200 focus:outline-none"
+                    value={ruleType}
+                    onChange={(e) => setRuleType(e.target.value as RuleType)}
+                    disabled={isSubmitting}
+                    className="w-full px-3 py-2 rounded-lg border text-xs bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-850 text-slate-800 dark:text-slate-200 focus:outline-none disabled:opacity-50"
                   >
-                    <option value="LOW">Basse</option>
-                    <option value="MEDIUM">Moyenne</option>
-                    <option value="HIGH">Haute</option>
-                    <option value="CRITICAL">Critique</option>
+                    <option value="threshold">Seuil (Threshold)</option>
+                    <option value="pattern">Pattern</option>
+                    <option value="behavioral">Comportemental</option>
+                    <option value="composite">Composite</option>
                   </select>
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-[10px] font-bold font-mono text-slate-450 uppercase">Catégorie</label>
+                  <label className="text-[10px] font-bold font-mono text-slate-450 uppercase">
+                    Niveau d'alerte <span className="text-red-500">*</span>
+                  </label>
+                  <select
+                    value={alertLevel}
+                    onChange={(e) =>
+                      setAlertLevel(e.target.value as SeverityLevel)
+                    }
+                    disabled={isSubmitting}
+                    className="w-full px-3 py-2 rounded-lg border text-xs bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-850 text-slate-800 dark:text-slate-200 focus:outline-none disabled:opacity-50"
+                  >
+                    <option value="info">Info</option>
+                    <option value="warning">Avertissement</option>
+                    <option value="high">Haute</option>
+                    <option value="critical">Critique</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold font-mono text-slate-450 uppercase">
+                  Conditions (JSON) <span className="text-red-500">*</span>
+                </label>
+                <textarea
+                  required
+                  placeholder='ex: {"field": "event.action", "value": "auth_failure"}'
+                  value={conditions}
+                  onChange={(e) => setConditions(e.target.value)}
+                  disabled={isSubmitting}
+                  className="w-full px-3 py-2 rounded-lg border text-xs bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-850 text-slate-800 dark:text-slate-200 focus:outline-none focus:border-blue-500 h-24 font-mono resize-none disabled:opacity-50"
+                />
+                <p className="text-[9px] text-slate-400 font-mono">
+                  Définissez les conditions de corrélation au format JSON
+                </p>
+              </div>
+
+              <div className="grid grid-cols-3 gap-3">
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold font-mono text-slate-450 uppercase">
+                    Fenêtre (s)
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    placeholder="300"
+                    value={timeWindowSeconds}
+                    onChange={(e) => setTimeWindowSeconds(e.target.value)}
+                    disabled={isSubmitting}
+                    className="w-full px-3 py-2 rounded-lg border text-xs bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-850 text-slate-800 dark:text-slate-200 focus:outline-none focus:border-blue-500 disabled:opacity-50"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold font-mono text-slate-450 uppercase">
+                    Seuil
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    placeholder="5"
+                    value={thresholdCount}
+                    onChange={(e) => setThresholdCount(e.target.value)}
+                    disabled={isSubmitting}
+                    className="w-full px-3 py-2 rounded-lg border text-xs bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-850 text-slate-800 dark:text-slate-200 focus:outline-none focus:border-blue-500 disabled:opacity-50"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold font-mono text-slate-450 uppercase">
+                    Score conf.
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    max="100"
+                    placeholder="75"
+                    value={confidenceScore}
+                    onChange={(e) => setConfidenceScore(e.target.value)}
+                    disabled={isSubmitting}
+                    className="w-full px-3 py-2 rounded-lg border text-xs bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-850 text-slate-800 dark:text-slate-200 focus:outline-none focus:border-blue-500 disabled:opacity-50"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold font-mono text-slate-450 uppercase">
+                    MITRE Tactic
+                  </label>
                   <input
                     type="text"
-                    placeholder="ex: Execution, Access"
-                    value={category}
-                    onChange={(e) => setCategory(e.target.value)}
-                    className="w-full px-3 py-2 rounded-lg border text-xs bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-850 text-slate-800 dark:text-slate-200 focus:outline-none focus:border-blue-500"
+                    placeholder="ex: TA0006"
+                    value={mitreTactic}
+                    onChange={(e) => setMitreTactic(e.target.value)}
+                    disabled={isSubmitting}
+                    className="w-full px-3 py-2 rounded-lg border text-xs bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-850 text-slate-800 dark:text-slate-200 focus:outline-none focus:border-blue-500 disabled:opacity-50"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold font-mono text-slate-450 uppercase">
+                    MITRE Technique
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="ex: T1110"
+                    value={mitreTechnique}
+                    onChange={(e) => setMitreTechnique(e.target.value)}
+                    disabled={isSubmitting}
+                    className="w-full px-3 py-2 rounded-lg border text-xs bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-850 text-slate-800 dark:text-slate-200 focus:outline-none focus:border-blue-500 disabled:opacity-50"
                   />
                 </div>
               </div>
 
               <div className="space-y-1">
-                <label className="text-[10px] font-bold font-mono text-slate-450 uppercase">Expression de requête SIEM</label>
-                <textarea
-                  required
-                  placeholder="ex: event.category: 'auth_fail' AND network.port: 22"
-                  value={query}
-                  onChange={(e) => setQuery(e.target.value)}
-                  className="w-full px-3 py-2 rounded-lg border text-xs bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-850 text-slate-800 dark:text-slate-200 focus:outline-none focus:border-blue-500 h-24 font-mono resize-none"
+                <label className="text-[10px] font-bold font-mono text-slate-450 uppercase">
+                  Playbook associé (ID)
+                </label>
+                <input
+                  type="text"
+                  placeholder="ex: playbook-001"
+                  value={playbookId}
+                  onChange={(e) => setPlaybookId(e.target.value)}
+                  disabled={isSubmitting}
+                  className="w-full px-3 py-2 rounded-lg border text-xs bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-850 text-slate-800 dark:text-slate-200 focus:outline-none focus:border-blue-500 disabled:opacity-50"
                 />
               </div>
 
               <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-100 dark:border-slate-800/60">
                 <button
                   type="button"
-                  onClick={() => setShowModal(false)}
-                  className="px-4 py-2 rounded-lg border border-slate-200 dark:border-slate-800 text-xs font-semibold text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-900 transition-all cursor-pointer"
+                  onClick={() => {
+                    setShowModal(false);
+                    resetForm();
+                    setFormError("");
+                  }}
+                  disabled={isSubmitting}
+                  className="px-4 py-2 rounded-lg border border-slate-200 dark:border-slate-800 text-xs font-semibold text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-900 transition-all cursor-pointer disabled:opacity-50"
                 >
                   Annuler
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs transition-all active:scale-95 cursor-pointer shadow-md"
+                  disabled={isSubmitting}
+                  className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 disabled:bg-blue-400 text-white font-bold text-xs transition-all active:scale-95 cursor-pointer shadow-md flex items-center gap-2"
                 >
-                  Enregistrer la règle
+                  {isSubmitting ? (
+                    <>
+                      <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                      <span>Enregistrement...</span>
+                    </>
+                  ) : (
+                    <span>Enregistrer la règle</span>
+                  )}
                 </button>
               </div>
             </form>
           </div>
         </div>
       )}
-
     </div>
   );
 }

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState } from "react";
 import {
   ShieldAlert,
   Terminal,
@@ -8,8 +8,8 @@ import {
   TrendingUp,
   AlertTriangle,
   ArrowRight,
-  ShieldCheck
-} from 'lucide-react';
+  ShieldCheck,
+} from "lucide-react";
 import {
   AreaChart,
   Area,
@@ -20,33 +20,39 @@ import {
   ResponsiveContainer,
   BarChart,
   Bar,
-  Legend
-} from 'recharts';
-import api from '../../Services/api';
-import type { SecurityLog, Incident, EndpointAgent, UebaAnomaly } from '../../types';
+  Legend,
+} from "recharts";
+import api from "../../Services/api";
+import type {
+  LogEvent,
+  Incident,
+  EndpointAgent,
+  UebaProfile,
+} from "../../types";
 
 export default function DashboardView() {
-  const [logs, setLogs] = useState<SecurityLog[]>([]);
+  const [logs, setLogs] = useState<LogEvent[]>([]);
   const [incidents, setIncidents] = useState<Incident[]>([]);
   const [agents, setAgents] = useState<EndpointAgent[]>([]);
-  const [anomalies, setAnomalies] = useState<UebaAnomaly[]>([]);
+  const [profiles, setProfiles] = useState<UebaProfile[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     async function fetchData() {
       try {
-        const [logsRes, incidentsRes, agentsRes, anomaliesRes] = await Promise.all([
-          api.getLogs(),
-          api.getIncidents(),
-          api.getAgents(),
-          api.getAnomalies()
-        ]);
+        const [logsRes, incidentsRes, agentsRes, profilesRes] =
+          await Promise.all([
+            api.getLogs(),
+            api.getIncidents(),
+            api.getAgents(),
+            api.getUebaProfiles(),
+          ]);
         setLogs(logsRes);
         setIncidents(incidentsRes);
         setAgents(agentsRes);
-        setAnomalies(anomaliesRes);
+        setProfiles(profilesRes);
       } catch (err) {
-        console.error('Erreur chargement dashboard data', err);
+        console.error("Erreur chargement dashboard data", err);
       } finally {
         setLoading(false);
       }
@@ -56,7 +62,10 @@ export default function DashboardView() {
 
   if (loading) {
     return (
-      <div id="dashboard-loading" className="flex-1 flex items-center justify-center p-8 h-full">
+      <div
+        id="dashboard-loading"
+        className="flex-1 flex items-center justify-center p-8 h-full"
+      >
         <div className="w-10 h-10 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
       </div>
     );
@@ -65,35 +74,56 @@ export default function DashboardView() {
   // Statistics calculation
   const totalLogs = logs.length;
   const totalIncidents = incidents.length;
-  const activeIncidents = incidents.filter(i => i.status !== 'CLOSED').length;
-  const activeAgents = agents.filter(a => a.status === 'ONLINE').length;
-  const avgRiskScore = anomalies.length > 0 
-    ? Math.round(anomalies.reduce((acc, curr) => acc + curr.risk_score, 0) / anomalies.length) 
-    : 0;
+  const activeIncidents = incidents.filter((i) => i.status !== "closed").length;
+  const activeAgents = agents.filter((a) => a.status === "ONLINE").length;
+  const avgRiskScore =
+    profiles.length > 0
+      ? Math.round(
+          profiles.reduce((acc, curr) => acc + curr.risk_score_current, 0) /
+            profiles.length,
+        )
+      : 0;
 
   // Chart data
   const activityData = [
-    { time: '14:00', 'Authentification': 12, 'Réseau': 85, 'DNS': 42, 'Endpoint': 18 },
-    { time: '15:00', 'Authentification': 19, 'Réseau': 98, 'DNS': 38, 'Endpoint': 24 },
-    { time: '16:00', 'Authentification': 45, 'Réseau': 142, 'DNS': 65, 'Endpoint': 55 }, // Peak
-    { time: '17:00', 'Authentification': 22, 'Réseau': 110, 'DNS': 50, 'Endpoint': 30 },
-    { time: '18:00', 'Authentification': 15, 'Réseau': 95, 'DNS': 35, 'Endpoint': 22 },
-    { time: '19:00', 'Authentification': 33, 'Réseau': 160, 'DNS': 58, 'Endpoint': 89 } // Exfiltration time
+    { time: "14:00", Authentification: 12, Réseau: 85, DNS: 42, Endpoint: 18 },
+    { time: "15:00", Authentification: 19, Réseau: 98, DNS: 38, Endpoint: 24 },
+    { time: "16:00", Authentification: 45, Réseau: 142, DNS: 65, Endpoint: 55 }, // Peak
+    { time: "17:00", Authentification: 22, Réseau: 110, DNS: 50, Endpoint: 30 },
+    { time: "18:00", Authentification: 15, Réseau: 95, DNS: 35, Endpoint: 22 },
+    { time: "19:00", Authentification: 33, Réseau: 160, DNS: 58, Endpoint: 89 }, // Exfiltration time
   ];
 
   const severityData = [
-    { name: 'Critique', count: incidents.filter(i => i.severity === 'CRITICAL').length, fill: '#ef4444' },
-    { name: 'Haute', count: incidents.filter(i => i.severity === 'HIGH').length, fill: '#f97316' },
-    { name: 'Moyenne', count: incidents.filter(i => i.severity === 'MEDIUM').length, fill: '#f59e0b' },
-    { name: 'Basse', count: incidents.filter(i => i.severity === 'LOW').length, fill: '#3b82f6' }
+    {
+      name: "Critique",
+      count: incidents.filter((i) => i.severity === "critical").length,
+      fill: "#ef4444",
+    },
+    {
+      name: "Haute",
+      count: incidents.filter((i) => i.severity === "high").length,
+      fill: "#f97316",
+    },
+    {
+      name: "Moyenne",
+      count: incidents.filter((i) => i.severity === "warning").length,
+      fill: "#f59e0b",
+    },
+    {
+      name: "Basse",
+      count: incidents.filter((i) => i.severity === "info").length,
+      fill: "#3b82f6",
+    },
   ];
 
   return (
-    <div id="dashboard-view" className="p-6 space-y-6 overflow-y-auto h-full pb-16">
-      
+    <div
+      id="dashboard-view"
+      className="p-6 space-y-6 overflow-y-auto h-full pb-16"
+    >
       {/* 4 Stats Cards grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
-        
         {/* Logs Card */}
         <div className="bg-white dark:bg-[#1E293B] p-5 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm flex items-center justify-between hover:scale-[1.01] transition-transform">
           <div className="space-y-1">
@@ -124,7 +154,10 @@ export default function DashboardView() {
             </h3>
             <p className="text-[10px] text-rose-500 font-bold flex items-center gap-1">
               <AlertTriangle className="w-3 h-3" />
-              <span>{incidents.filter(i => i.severity === 'CRITICAL').length} Alertes critiques</span>
+              <span>
+                {incidents.filter((i) => i.severity === "critical").length}{" "}
+                Alertes critiques
+              </span>
             </p>
           </div>
           <div className="w-12 h-12 rounded-xl bg-red-500/10 text-red-500 flex items-center justify-center shrink-0">
@@ -157,7 +190,8 @@ export default function DashboardView() {
               Niveau de Risque UEBA
             </span>
             <h3 className="text-2xl font-bold tracking-tight text-slate-800 dark:text-slate-100 font-mono">
-              {avgRiskScore} <span className="text-xs text-slate-400 font-normal">/ 100</span>
+              {avgRiskScore}{" "}
+              <span className="text-xs text-slate-400 font-normal">/ 100</span>
             </h3>
             <p className="text-[10px] text-amber-500 font-bold flex items-center gap-1">
               <Activity className="w-3 h-3 animate-pulse" />
@@ -168,12 +202,10 @@ export default function DashboardView() {
             <UserCheck className="w-6 h-6" />
           </div>
         </div>
-
       </div>
 
       {/* Main Charts grid */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        
         {/* Left: Interactive Timeline of Security events (2/3 width) */}
         <div className="lg:col-span-2 bg-white dark:bg-[#1E293B] p-5 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm space-y-4">
           <div>
@@ -181,39 +213,77 @@ export default function DashboardView() {
               Activité des flux de logs (Temps Réel)
             </h4>
             <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">
-              Analyse volumétrique par catégorie de collecteurs sur les dernières heures.
+              Analyse volumétrique par catégorie de collecteurs sur les
+              dernières heures.
             </p>
           </div>
           <div className="h-72 w-full font-mono text-xs">
             <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={activityData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+              <AreaChart
+                data={activityData}
+                margin={{ top: 10, right: 10, left: -20, bottom: 0 }}
+              >
                 <defs>
                   <linearGradient id="colorNet" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.2}/>
-                    <stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/>
+                    <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.2} />
+                    <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
                   </linearGradient>
                   <linearGradient id="colorEnd" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#ef4444" stopOpacity={0.2}/>
-                    <stop offset="95%" stopColor="#ef4444" stopOpacity={0}/>
+                    <stop offset="5%" stopColor="#ef4444" stopOpacity={0.2} />
+                    <stop offset="95%" stopColor="#ef4444" stopOpacity={0} />
                   </linearGradient>
                 </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" className="dark:hidden" />
-                <CartesianGrid strokeDasharray="3 3" stroke="#334155" className="hidden dark:block" />
+                <CartesianGrid
+                  strokeDasharray="3 3"
+                  stroke="#e2e8f0"
+                  className="dark:hidden"
+                />
+                <CartesianGrid
+                  strokeDasharray="3 3"
+                  stroke="#334155"
+                  className="hidden dark:block"
+                />
                 <XAxis dataKey="time" stroke="#94a3b8" />
                 <YAxis stroke="#94a3b8" />
-                <Tooltip 
-                  contentStyle={{ 
-                    backgroundColor: '#0f172a', 
-                    borderRadius: '8px', 
-                    border: 'none',
-                    color: '#fff'
-                  }} 
+                <Tooltip
+                  contentStyle={{
+                    backgroundColor: "#0f172a",
+                    borderRadius: "8px",
+                    border: "none",
+                    color: "#fff",
+                  }}
                 />
                 <Legend />
-                <Area type="monotone" dataKey="Réseau" stroke="#3b82f6" fillOpacity={1} fill="url(#colorNet)" strokeWidth={2} />
-                <Area type="monotone" dataKey="Endpoint" stroke="#ef4444" fillOpacity={1} fill="url(#colorEnd)" strokeWidth={2} />
-                <Area type="monotone" dataKey="DNS" stroke="#10b981" fillOpacity={0} strokeWidth={2} />
-                <Area type="monotone" dataKey="Authentification" stroke="#f59e0b" fillOpacity={0} strokeWidth={2} />
+                <Area
+                  type="monotone"
+                  dataKey="Réseau"
+                  stroke="#3b82f6"
+                  fillOpacity={1}
+                  fill="url(#colorNet)"
+                  strokeWidth={2}
+                />
+                <Area
+                  type="monotone"
+                  dataKey="Endpoint"
+                  stroke="#ef4444"
+                  fillOpacity={1}
+                  fill="url(#colorEnd)"
+                  strokeWidth={2}
+                />
+                <Area
+                  type="monotone"
+                  dataKey="DNS"
+                  stroke="#10b981"
+                  fillOpacity={0}
+                  strokeWidth={2}
+                />
+                <Area
+                  type="monotone"
+                  dataKey="Authentification"
+                  stroke="#f59e0b"
+                  fillOpacity={0}
+                  strokeWidth={2}
+                />
               </AreaChart>
             </ResponsiveContainer>
           </div>
@@ -231,30 +301,45 @@ export default function DashboardView() {
           </div>
           <div className="h-72 w-full font-mono text-xs">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={severityData} layout="vertical" margin={{ top: 10, right: 10, left: -10, bottom: 5 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" className="dark:hidden" />
-                <CartesianGrid strokeDasharray="3 3" stroke="#334155" className="hidden dark:block" />
+              <BarChart
+                data={severityData}
+                layout="vertical"
+                margin={{ top: 10, right: 10, left: -10, bottom: 5 }}
+              >
+                <CartesianGrid
+                  strokeDasharray="3 3"
+                  stroke="#e2e8f0"
+                  className="dark:hidden"
+                />
+                <CartesianGrid
+                  strokeDasharray="3 3"
+                  stroke="#334155"
+                  className="hidden dark:block"
+                />
                 <XAxis type="number" stroke="#94a3b8" />
-                <YAxis dataKey="name" type="category" stroke="#94a3b8" width={60} />
+                <YAxis
+                  dataKey="name"
+                  type="category"
+                  stroke="#94a3b8"
+                  width={60}
+                />
                 <Tooltip
-                  contentStyle={{ 
-                    backgroundColor: '#0f172a', 
-                    borderRadius: '8px', 
-                    border: 'none',
-                    color: '#fff'
-                  }} 
+                  contentStyle={{
+                    backgroundColor: "#0f172a",
+                    borderRadius: "8px",
+                    border: "none",
+                    color: "#fff",
+                  }}
                 />
                 <Bar dataKey="count" radius={[0, 4, 4, 0]} barSize={24} />
               </BarChart>
             </ResponsiveContainer>
           </div>
         </div>
-
       </div>
 
       {/* Recent incidents & threats split view */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        
         {/* Left: Active Incidents List */}
         <div className="bg-white dark:bg-[#1E293B] p-5 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm space-y-4">
           <div className="flex items-center justify-between">
@@ -268,17 +353,25 @@ export default function DashboardView() {
           </div>
           <div className="divide-y divide-slate-100 dark:divide-slate-800 space-y-3.5">
             {incidents.slice(0, 3).map((inc) => {
-              const badgeColors = 
-                inc.severity === 'CRITICAL' ? 'text-red-500 bg-red-500/10 border-red-500/20' :
-                inc.severity === 'HIGH' ? 'text-orange-500 bg-orange-500/10 border-orange-500/20' :
-                inc.severity === 'MEDIUM' ? 'text-amber-500 bg-amber-500/10 border-amber-500/20' :
-                'text-blue-500 bg-blue-500/10 border-blue-500/20';
+              const badgeColors =
+                inc.severity === "critical"
+                  ? "text-red-500 bg-red-500/10 border-red-500/20"
+                  : inc.severity === "high"
+                    ? "text-orange-500 bg-orange-500/10 border-orange-500/20"
+                    : inc.severity === "warning"
+                      ? "text-amber-500 bg-amber-500/10 border-amber-500/20"
+                      : "text-blue-500 bg-blue-500/10 border-blue-500/20";
 
               return (
-                <div key={inc.id} className="pt-3.5 first:pt-0 flex items-start justify-between gap-4">
+                <div
+                  key={inc.id}
+                  className="pt-3.5 first:pt-0 flex items-start justify-between gap-4"
+                >
                   <div className="space-y-1">
                     <div className="flex items-center gap-2">
-                      <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold border ${badgeColors} font-mono`}>
+                      <span
+                        className={`px-2 py-0.5 rounded-full text-[9px] font-bold border ${badgeColors} font-mono`}
+                      >
                         {inc.severity}
                       </span>
                       <span className="text-xs font-bold text-slate-800 dark:text-slate-200">
@@ -286,11 +379,14 @@ export default function DashboardView() {
                       </span>
                     </div>
                     <p className="text-[11px] text-slate-450 dark:text-slate-400 line-clamp-1">
-                      {inc.description}
+                      {inc.root_cause || "Aucune cause racine définie"}
                     </p>
                   </div>
                   <span className="text-[10px] text-slate-400 dark:text-slate-500 font-mono shrink-0">
-                    {new Date(inc.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    {new Date(inc.opened_at).toLocaleTimeString([], {
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    })}
                   </span>
                 </div>
               );
@@ -305,18 +401,23 @@ export default function DashboardView() {
               État de la Posture de Sécurité
             </h4>
             <p className="text-xs text-slate-400 dark:text-slate-500">
-              Évaluation continue basée sur les règles, la conformité et les vulnérabilités.
+              Évaluation continue basée sur les règles, la conformité et les
+              vulnérabilités.
             </p>
           </div>
-          
+
           <div className="py-6 flex items-center justify-center gap-6">
             <div className="relative w-28 h-28 flex items-center justify-center">
               {/* Simple CSS Circular indicator */}
               <div className="absolute inset-0 rounded-full border-8 border-slate-100 dark:border-slate-850"></div>
               <div className="absolute inset-0 rounded-full border-8 border-emerald-500 border-t-transparent border-r-transparent animate-spin-slow"></div>
               <div className="text-center">
-                <span className="text-3xl font-extrabold text-slate-800 dark:text-slate-100 font-mono">82</span>
-                <span className="text-xs text-slate-400 block font-semibold">%</span>
+                <span className="text-3xl font-extrabold text-slate-800 dark:text-slate-100 font-mono">
+                  82
+                </span>
+                <span className="text-xs text-slate-400 block font-semibold">
+                  %
+                </span>
               </div>
             </div>
 
@@ -326,14 +427,13 @@ export default function DashboardView() {
                 <span>Niveau global : Optimal</span>
               </div>
               <p className="text-[11px] text-slate-450 dark:text-slate-400 leading-relaxed max-w-xs">
-                Moteur de corrélation actif. Agents de télémétrie stables. 1 vulnérabilité critique en cours de remédiation (CVE-2024-3094).
+                Moteur de corrélation actif. Agents de télémétrie stables. 1
+                vulnérabilité critique en cours de remédiation (CVE-2024-3094).
               </p>
             </div>
           </div>
         </div>
-
       </div>
-
     </div>
   );
 }

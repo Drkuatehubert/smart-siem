@@ -33,7 +33,7 @@ export default function App() {
   });
   const [activeModule, setActiveModule] = useState<ModuleID>('dashboard');
   const [activeRole, setActiveRole] = useState<UserRole>(() => {
-    return (localStorage.getItem('siem_role') as UserRole) || 'SOC_ANALYST';
+    return (localStorage.getItem('siem_role') as UserRole) || 'reader';
   });
   const [userEmail, setUserEmail] = useState<string>(() => {
     return localStorage.getItem('siem_email') || '';
@@ -46,9 +46,15 @@ export default function App() {
     if (isDarkMode) {
       root.classList.add('dark');
       root.style.backgroundColor = '#0F172A';
+      root.style.setProperty('--bg-primary', '#0F172A');
+      root.style.setProperty('--bg-secondary', '#1E293B');
+      root.style.setProperty('--text-primary', '#E2E8F0');
     } else {
       root.classList.remove('dark');
-      root.style.backgroundColor = '#f8fafc';
+      root.style.backgroundColor = '#F1F5F9';
+      root.style.removeProperty('--bg-primary');
+      root.style.removeProperty('--bg-secondary');
+      root.style.removeProperty('--text-primary');
     }
   }, [isDarkMode]);
 

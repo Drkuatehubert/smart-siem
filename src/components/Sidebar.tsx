@@ -1,3 +1,4 @@
+// src/components/Sidebar.tsx
 import React from 'react';
 import {
   LayoutDashboard,
@@ -42,8 +43,8 @@ const ICON_MAP: Record<ModuleID, React.ComponentType<any>> = {
 };
 
 export default function Sidebar({ activeModule, setActiveModule, activeRole, onLogout }: SidebarProps) {
-  // Flat items and configuration section matching the mockup exactly
-  const mainModules = [
+  // ✅ Filtrer les modules visibles en fonction du rôle
+  const allModules = [
     { id: 'dashboard', label: 'Tableau de bord' },
     { id: 'incidents', label: 'Alertes' },
     { id: 'logs', label: 'Investigation' },
@@ -61,47 +62,39 @@ export default function Sidebar({ activeModule, setActiveModule, activeRole, onL
     { id: 'vuln', label: 'Logs d\'audit' }
   ] as const;
 
-  const handleModuleClick = (moduleId: ModuleID, isAllowed: boolean) => {
-    if (isAllowed) {
-      setActiveModule(moduleId);
-    }
+  // ✅ Filtrer les modules : ne montrer que ceux auxquels l'utilisateur a accès
+  const visibleMainModules = allModules.filter(m => isModuleAllowed(activeRole, m.id));
+  const visibleConfigModules = configModules.filter(m => isModuleAllowed(activeRole, m.id));
+
+  const handleModuleClick = (moduleId: ModuleID) => {
+    // ✅ Plus besoin de vérifier car seuls les modules autorisés sont affichés
+    setActiveModule(moduleId);
   };
 
   const renderModuleButton = (id: ModuleID, label: string) => {
     const IconComponent = ICON_MAP[id];
-    const isAllowed = isModuleAllowed(activeRole, id);
     const isActive = activeModule === id;
 
     return (
       <li key={id} id={`nav-item-${id}`}>
         <button
-          onClick={() => handleModuleClick(id, isAllowed)}
-          className={`w-full flex items-center justify-between px-6 py-2.5 text-xs font-semibold transition-all group relative border-l-4 border-transparent ${
+          onClick={() => handleModuleClick(id)}
+          className={`w-full flex items-center gap-3 px-6 py-2.5 text-xs font-semibold transition-all group relative border-l-4 border-transparent ${
             isActive
               ? 'bg-blue-50 dark:bg-blue-950/20 text-blue-600 dark:text-blue-400 border-l-blue-600 dark:border-l-blue-500 font-bold'
-              : isAllowed
-              ? 'text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-900/40 hover:text-slate-900 dark:hover:text-slate-200'
-              : 'text-slate-400 dark:text-slate-600 cursor-not-allowed opacity-50'
+              : 'text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-900/40 hover:text-slate-900 dark:hover:text-slate-200'
           }`}
         >
-          <div className="flex items-center gap-3">
-            {IconComponent && (
-              <IconComponent
-                className={`w-4 h-4 shrink-0 transition-colors ${
-                  isActive
-                    ? 'text-blue-600 dark:text-blue-400'
-                    : isAllowed
-                    ? 'text-slate-400 dark:text-slate-500 group-hover:text-slate-600 dark:group-hover:text-slate-300'
-                    : 'text-slate-300 dark:text-slate-700'
-                }`}
-              />
-            )}
-            <span className="truncate">{label}</span>
-          </div>
-
-          {!isAllowed && (
-            <Lock className="w-3.5 h-3.5 text-slate-300 dark:text-slate-700 shrink-0" />
+          {IconComponent && (
+            <IconComponent
+              className={`w-4 h-4 shrink-0 transition-colors ${
+                isActive
+                  ? 'text-blue-600 dark:text-blue-400'
+                  : 'text-slate-400 dark:text-slate-500 group-hover:text-slate-600 dark:group-hover:text-slate-300'
+              }`}
+            />
           )}
+          <span className="truncate">{label}</span>
         </button>
       </li>
     );
@@ -109,7 +102,7 @@ export default function Sidebar({ activeModule, setActiveModule, activeRole, onL
 
   return (
     <aside id="siem-sidebar" className="w-64 border-r flex flex-col h-screen overflow-y-auto shrink-0 bg-white dark:bg-[#0b0f19] border-slate-200 dark:border-slate-800 transition-colors duration-300">
-      {/* Brand logo */}
+      {/* Brand logo - inchangé */}
       <div id="sidebar-logo-container" className="h-16 flex items-center gap-3.5 px-6 border-b border-slate-200 dark:border-slate-800 shrink-0">
         <div className="w-9 h-9 rounded-xl bg-blue-600 dark:bg-blue-600/20 border border-blue-500/20 flex items-center justify-center text-white dark:text-blue-400 shadow-sm shrink-0">
           <Shield className="w-5 h-5" />
@@ -124,25 +117,28 @@ export default function Sidebar({ activeModule, setActiveModule, activeRole, onL
         </div>
       </div>
 
-      {/* Nav Content */}
+      {/* Nav Content - FILTRÉ ! */}
       <div id="sidebar-nav-content" className="flex-1 py-4 space-y-5">
         <ul className="space-y-0.5">
-          {mainModules.map((m) => renderModuleButton(m.id, m.label))}
+          {visibleMainModules.map((m) => renderModuleButton(m.id, m.label))}
         </ul>
 
-        <div className="space-y-2">
-          <div className="px-6">
-            <h2 className="text-[10px] font-mono font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">
-              CONFIGURATION
-            </h2>
+        {/* Section Configuration - uniquement si des modules sont visibles */}
+        {visibleConfigModules.length > 0 && (
+          <div className="space-y-2">
+            <div className="px-6">
+              <h2 className="text-[10px] font-mono font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">
+                CONFIGURATION
+              </h2>
+            </div>
+            <ul className="space-y-0.5">
+              {visibleConfigModules.map((m) => renderModuleButton(m.id, m.label))}
+            </ul>
           </div>
-          <ul className="space-y-0.5">
-            {configModules.map((m) => renderModuleButton(m.id, m.label))}
-          </ul>
-        </div>
+        )}
       </div>
 
-      {/* Footer Déconnexion and line only, matching mockup perfectly */}
+      {/* Footer - inchangé */}
       <div id="sidebar-footer" className="border-t border-slate-200 dark:border-slate-800 shrink-0 p-3">
         {onLogout && (
           <button
