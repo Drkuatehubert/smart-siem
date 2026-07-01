@@ -164,7 +164,7 @@ class Settings(BaseSettings):
     )
 
     # ── Elasticsearch ────────────────────────────────────────────────────
-    ELASTICSEARCH_HOST: str = "http://elasticsearch:9200"
+    ELASTICSEARCH_HOST: str = "https://elasticsearch:9200"
     ELASTICSEARCH_USERNAME: str = "elastic"
     ELASTICSEARCH_PASSWORD: str = "8-0Il66xvSeGnK=COySu"  # NB: valeur de dev, doit être surchargée en prod via l'environnement
     ELASTICSEARCH_TLS_VERIFY: bool = True  # vérifie le certificat TLS d'Elasticsearch (à ne jamais désactiver en prod)
@@ -187,7 +187,7 @@ class Settings(BaseSettings):
     SMTP_PORT: int = 587
     SMTP_USER: str = ""
     SMTP_PASSWORD: str = ""
-    SMTP_FROM: EmailStr = "smart-siem@ucac-icam.com"  # type: ignore[assignment]  # adresse d'expéditeur des emails
+    SMTP_FROM: EmailStr = "soc@smartsiem.local"  # type: ignore[assignment]  # adresse d'expéditeur des emails
     SMTP_TLS: bool = True
     SLACK_WEBHOOK_URL: str = ""  # URL du webhook Slack pour les notifications d'alerte
     SLACK_SIGNING_SECRET: str = ""  # secret utilisé pour vérifier l'authenticité des requêtes Slack entrantes
