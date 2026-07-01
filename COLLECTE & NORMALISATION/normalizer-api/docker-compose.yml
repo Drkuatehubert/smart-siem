@@ -1,14 +1,3 @@
-version: '3.9'
-
-services:
-  normalizer:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: log-normalizer
-    env_file: .env
-    ports:
-      - "443:443"
-    volumes:
-      - ./certs:/app/certs:ro
-    restart: unless-stopped
+# Ce fichier est conservé à titre de référence uniquement.
+# L'orchestration est centralisée dans docker-compose.yml à la racine du projet.
+# Lancer depuis la racine : docker compose up -d normalizer
