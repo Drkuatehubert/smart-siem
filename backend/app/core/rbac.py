@@ -1,18 +1,18 @@
-"""
-rbac.py — Contrôle d'accès basé sur les rôles (RBAC) + org_scope
+﻿"""
+rbac.py â€” ContrÃ´le d'accÃ¨s basÃ© sur les rÃ´les (RBAC) + org_scope
 
-Responsable : Chef de Projet & Sécurité
+Responsable : Chef de Projet & SÃ©curitÃ©
 Exigences : RF-SEC-02, RF-SEC-04 (multi-tenant)
 
-Durcissements par rapport à la version initiale :
-  * nouveau rôle AUDITEUR (lecture seule cross-scope) ;
+Durcissements par rapport Ã  la version initiale :
+  * nouveau rÃ´le AUDITEUR (lecture seule cross-scope) ;
   * nouvelle permission `soar:execute` (analyste+admin) ;
-  * `audit:read` accordé à ADMINISTRATEUR ET AUDITEUR (corrige le mensonge
-    du docstring de l'audit router précédent) ;
-  * `require_roles_with_audit` écrit dans `idx-audit-log` à chaque refus
-    (action `autorisation_refusee`) avec détails forensiques ;
-  * `check_org_scope` lève désormais un audit `acces_hors_perimetre` quand
-    le périmètre est dépassé (au lieu d'un simple 403 muet).
+  * `audit:read` accordÃ© Ã  ADMINISTRATEUR ET AUDITEUR (corrige le mensonge
+    du docstring de l'audit router prÃ©cÃ©dent) ;
+  * `require_roles_with_audit` Ã©crit dans `idx-audit-log` Ã  chaque refus
+    (action `autorisation_refusee`) avec dÃ©tails forensiques ;
+  * `check_org_scope` lÃ¨ve dÃ©sormais un audit `acces_hors_perimetre` quand
+    le pÃ©rimÃ¨tre est dÃ©passÃ© (au lieu d'un simple 403 muet).
 """
 
 from __future__ import annotations
@@ -24,9 +24,9 @@ from fastapi import Depends, HTTPException, Request, status
 from app.core.security import get_current_user, require_validated_user
 
 
-# ─────────────────────────────────────────────────────────────────────
-# Définition des rôles
-# ─────────────────────────────────────────────────────────────────────
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# DÃ©finition des rÃ´les
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 class Role:
     LECTEUR        = "lecteur"
@@ -37,9 +37,9 @@ class Role:
     ALL = [LECTEUR, ANALYSTE, ADMINISTRATEUR, AUDITEUR]
 
 
-# ─────────────────────────────────────────────────────────────────────
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 # Matrice des permissions (RF-SEC-02)
-# ─────────────────────────────────────────────────────────────────────
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 PERMISSIONS: dict[str, List[str]] = {
     # Logs
@@ -70,7 +70,7 @@ PERMISSIONS: dict[str, List[str]] = {
     # Dashboard
     "dashboard:read":     [Role.LECTEUR, Role.ANALYSTE, Role.ADMINISTRATEUR, Role.AUDITEUR],
 
-    # Audit log (RF-SEC-03) — Admin OU Auditeur (lecture seule)
+    # Audit log (RF-SEC-03) â€” Admin OU Auditeur (lecture seule)
     "audit:read":         [Role.ADMINISTRATEUR, Role.AUDITEUR],
 
     # Utilisateurs (admin seulement)
@@ -79,7 +79,7 @@ PERMISSIONS: dict[str, List[str]] = {
     "users:update":       [Role.ADMINISTRATEUR],
     "users:delete":       [Role.ADMINISTRATEUR],
 
-    # Règles de corrélation (admin seulement)
+    # RÃ¨gles de corrÃ©lation (admin seulement)
     "rules:read":         [Role.ANALYSTE, Role.ADMINISTRATEUR, Role.AUDITEUR],
     "rules:create":       [Role.ADMINISTRATEUR],
     "rules:update":       [Role.ADMINISTRATEUR],
@@ -89,35 +89,35 @@ PERMISSIONS: dict[str, List[str]] = {
     "sources:read":       [Role.LECTEUR, Role.ANALYSTE, Role.ADMINISTRATEUR, Role.AUDITEUR],
     "sources:manage":     [Role.ADMINISTRATEUR],
 
-    # Politique de rétention
+    # Politique de rÃ©tention
     "retention:read":     [Role.ADMINISTRATEUR, Role.AUDITEUR],
     "retention:update":   [Role.ADMINISTRATEUR],
 }
 
 
-# ─────────────────────────────────────────────────────────────────────
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 # Helpers
-# ─────────────────────────────────────────────────────────────────────
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 def has_permission(role: str, permission: str) -> bool:
-    """Vérifie si un rôle possède une permission donnée."""
+    """VÃ©rifie si un rÃ´le possÃ¨de une permission donnÃ©e."""
     allowed_roles = PERMISSIONS.get(permission)
     if allowed_roles is None:
         # Permission inconnue : on log et on refuse (fail-closed)
         import logging
-        logging.getLogger("rbac").warning("Permission inconnue demandée : %s", permission)
+        logging.getLogger("rbac").warning("Permission inconnue demandÃ©e : %s", permission)
         return False
     return role in allowed_roles
 
 
 def check_org_scope(user: dict, resource_org_scope: str) -> bool:
     """
-    Vérifie la ségrégation organisationnelle (RF-SEC-04).
+    VÃ©rifie la sÃ©grÃ©gation organisationnelle (RF-SEC-04).
 
-    Règles :
-      * ADMINISTRATEUR → bypass total ;
-      * AUDITEUR → bypass total en lecture (mais endpoints sensibles en écriture refusés) ;
-      * autres rôles → exigent `user.org_scope == resource_org_scope` (et non None).
+    RÃ¨gles :
+      * ADMINISTRATEUR â†’ bypass total ;
+      * AUDITEUR â†’ bypass total en lecture (mais endpoints sensibles en Ã©criture refusÃ©s) ;
+      * autres rÃ´les â†’ exigent `user.org_scope == resource_org_scope` (et non None).
     """
     role = user.get("role")
     if role == Role.ADMINISTRATEUR:
@@ -126,14 +126,14 @@ def check_org_scope(user: dict, resource_org_scope: str) -> bool:
         return True
     user_scope = user.get("org_scope")
     if not user_scope:
-        # Pas de scope ⇒ on refuse par défaut (fail-closed). Avant c'était True !
+        # Pas de scope â‡’ on refuse par dÃ©faut (fail-closed). Avant c'Ã©tait True !
         return False
     return user_scope == resource_org_scope
 
 
-# ─────────────────────────────────────────────────────────────────────
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 # Audit des refus
-# ─────────────────────────────────────────────────────────────────────
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 async def _write_authz_denied(
     user: dict,
@@ -142,9 +142,9 @@ async def _write_authz_denied(
     required_permission: str | None = None,
     request: Request | None = None,
 ) -> None:
-    """Écrit un événement `autorisation_refusee` dans `idx-audit-log`."""
+    """Ã‰crit un Ã©vÃ©nement `autorisation_refusee` dans `idx-audit-log`."""
     try:
-        from app.api.v1.auth.service import write_audit_log  # import local (évite cycle)
+        from app.api.v1.auth.service import write_audit_log  # import local (Ã©vite cycle)
         import json
         details = {
             "required_roles": required_roles,
@@ -167,18 +167,18 @@ async def _write_authz_denied(
             details={k: v for k, v in details.items() if v is not None},
         )
     except Exception:
-        # L'audit ne doit jamais faire échouer la requête elle-même
+        # L'audit ne doit jamais faire Ã©chouer la requÃªte elle-mÃªme
         pass
 
 
-# ─────────────────────────────────────────────────────────────────────
-# Dépendances FastAPI
-# ─────────────────────────────────────────────────────────────────────
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# DÃ©pendances FastAPI
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 def require_roles(*roles: str):
     """
-    Dépendance : restreint l'accès à une liste explicite de rôles.
-    Émet un audit `autorisation_refusee` en cas de 403.
+    DÃ©pendance : restreint l'accÃ¨s Ã  une liste explicite de rÃ´les.
+    Ã‰met un audit `autorisation_refusee` en cas de 403.
     """
     async def dependency(
         request: Request,
@@ -190,14 +190,14 @@ def require_roles(*roles: str):
             )
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="Accès refusé",
+                detail="AccÃ¨s refusÃ©",
             )
         return current_user
     return dependency
 
 
 def require_permission(permission: str):
-    """Dépendance : vérifie une permission spécifique. Émet un audit en cas de refus."""
+    """DÃ©pendance : vÃ©rifie une permission spÃ©cifique. Ã‰met un audit en cas de refus."""
     async def dependency(
         request: Request,
         current_user: dict = Depends(require_validated_user),
@@ -209,7 +209,7 @@ def require_permission(permission: str):
             )
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="Accès refusé",
+                detail="AccÃ¨s refusÃ©",
             )
         return current_user
     return dependency

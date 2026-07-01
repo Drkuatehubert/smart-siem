@@ -1,4 +1,4 @@
-from app.core.elasticsearch import get_es_client
+﻿from app.core.elasticsearch import get_es_client
 async def get_summary():
     es = get_es_client()
     res = await es.search(index="idx-alerts", body={"query":{"term":{"statut":"ouvert"}},"aggs":{"by_level":{"terms":{"field":"niveau"}}},"size":0})

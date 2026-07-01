@@ -1,17 +1,17 @@
-"""
-scripts/init_elasticsearch.py — Création et configuration des 13 index ES
+﻿"""
+scripts/init_elasticsearch.py â€” CrÃ©ation et configuration des 13 index ES
 
-Responsable : Chef de Projet & Sécurité
+Responsable : Chef de Projet & SÃ©curitÃ©
 Exigences : RF-COL-05 (initialisation), NFR-SEC-05 (audit append-only + ILM 7 ans)
 
 Ce script :
-  * crée l'ILM policy `audit-ilm-policy` (hot 1j → warm 30j → cold 365j → delete 2555j) ;
-  * crée le template `audit-template` qui pose `index.blocks.write=true` après rollover ;
-  * crée les 13 index métier avec leur mapping strict ;
+  * crÃ©e l'ILM policy `audit-ilm-policy` (hot 1j â†’ warm 30j â†’ cold 365j â†’ delete 2555j) ;
+  * crÃ©e le template `audit-template` qui pose `index.blocks.write=true` aprÃ¨s rollover ;
+  * crÃ©e les 13 index mÃ©tier avec leur mapping strict ;
   * attache l'ILM policy aux deux index sensibles (audit et SOAR) ;
-  * ne s'exécute pas avec `verify_certs=False` (utilise les settings du config).
+  * ne s'exÃ©cute pas avec `verify_certs=False` (utilise les settings du config).
 
-Note : exécution via `python scripts/init_elasticsearch.py` depuis la racine.
+Note : exÃ©cution via `python scripts/init_elasticsearch.py` depuis la racine.
 """
 
 from __future__ import annotations
@@ -35,9 +35,9 @@ ES_PASS = settings.ELASTICSEARCH_PASSWORD
 ES_VERIFY = settings.ELASTICSEARCH_TLS_VERIFY
 ES_CA = settings.ELASTICSEARCH_CA_CERTS
 
-# ─────────────────────────────────────────────────────────────────────
-# ILM policy — 7 ans de rétention (2555 jours)
-# ─────────────────────────────────────────────────────────────────────
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ILM policy â€” 7 ans de rÃ©tention (2555 jours)
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 AUDIT_ILM_POLICY = {
     "policy": {
@@ -64,8 +64,8 @@ AUDIT_TEMPLATE = {
             "index": {
                 "lifecycle": {"name": "audit-ilm-policy", "rollover_alias": None},
                 # write-once : pas de delete API, pas de update API
-                "blocks": {"write": False},  # on autorise l'écriture initiale ;
-                                              # le rollover bascule à True (voir hook)
+                "blocks": {"write": False},  # on autorise l'Ã©criture initiale ;
+                                              # le rollover bascule Ã  True (voir hook)
             },
             "number_of_shards": 1,
             "number_of_replicas": 1,
@@ -84,6 +84,10 @@ AUDIT_TEMPLATE = {
                 "target_entity": {"type": "keyword"},
                 "target_id":     {"type": "keyword"},
                 "details":       {"type": "object", "enabled": True},
+                "playbook":      {"type": "keyword"},
+                "alert_id":      {"type": "keyword"},
+                "target":        {"type": "keyword"},
+                "reason":        {"type": "text"},
                 "created_at":    {"type": "date"},
                 "executed_at":   {"type": "date"},
             },
@@ -92,9 +96,9 @@ AUDIT_TEMPLATE = {
     "priority": 200,
 }
 
-# ─────────────────────────────────────────────────────────────────────
-# Mappings des 13 index métier
-# ─────────────────────────────────────────────────────────────────────
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# Mappings des 13 index mÃ©tier
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 INDICES: dict[str, dict] = {
     "idx-users": {
@@ -127,7 +131,7 @@ INDICES: dict[str, dict] = {
             },
         },
     },
-    # idx-audit-log et idx-soar-executions sont gérés par le template ci-dessus
+    # idx-audit-log et idx-soar-executions sont gÃ©rÃ©s par le template ci-dessus
     "idx-sources": {
         "mappings": {
             "dynamic": "strict",
@@ -192,6 +196,13 @@ INDICES: dict[str, dict] = {
                 "assigned_to":        {"type": "keyword"},
                 "score_risque":       {"type": "integer"},
                 "mitre_technique_id": {"type": "keyword"},
+                "rule_nom":           {"type": "keyword"},
+                "source_ip":          {"type": "ip"},
+                "host":               {"type": "keyword"},
+                "username":           {"type": "keyword"},
+                "soar_recommended":   {"type": "boolean"},
+                "soar_approved":      {"type": "boolean"},
+                "ueba_context":       {"type": "object", "enabled": True},
                 "created_at":         {"type": "date"},
                 "updated_at":         {"type": "date"},
                 "commentaires":       {"type": "text"},
@@ -224,7 +235,7 @@ INDICES: dict[str, dict] = {
             },
         },
     },
-    # idx-soar-executions géré par le template audit
+    # idx-soar-executions gÃ©rÃ© par le template audit
     "idx-ueba-profiles": {
         "mappings": {
             "dynamic": "strict",
@@ -233,6 +244,8 @@ INDICES: dict[str, dict] = {
                 "entity_type":          {"type": "keyword"},
                 "typical_hours":        {"type": "keyword"},
                 "avg_volume_per_hour":  {"type": "float"},
+                "known_source_ips":      {"type": "ip"},
+                "known_hosts":           {"type": "keyword"},
                 "updated_at":           {"type": "date"},
             },
         },
@@ -244,6 +257,8 @@ INDICES: dict[str, dict] = {
                 "entity_id":      {"type": "keyword"},
                 "score":          {"type": "integer"},
                 "reasons":        {"type": "text"},
+                "source_ip":      {"type": "ip"},
+                "host":           {"type": "keyword"},
                 "evaluated_at":   {"type": "date"},
             },
         },
@@ -287,7 +302,7 @@ INDICES: dict[str, dict] = {
     },
 }
 
-# Index créés via le template (donc ILM appliqué)
+# Index crÃ©Ã©s via le template (donc ILM appliquÃ©)
 TEMPLATE_INDEX = {"idx-audit-log", "idx-soar-executions"}
 
 
@@ -304,44 +319,44 @@ async def main() -> None:
     # 1. ILM policy
     try:
         await es.ilm.put_lifecycle(name="audit-ilm-policy", policy=AUDIT_ILM_POLICY["policy"])
-        print("  ✓ ILM policy 'audit-ilm-policy' appliquée")
+        print("  âœ“ ILM policy 'audit-ilm-policy' appliquÃ©e")
     except Exception as exc:
         print(f"  ! ILM policy: {exc}")
 
     # 2. Index template
     try:
         await es.indices.put_index_template(name=AUDIT_TEMPLATE_NAME, body=AUDIT_TEMPLATE)
-        print(f"  ✓ Index template '{AUDIT_TEMPLATE_NAME}' appliqué")
+        print(f"  âœ“ Index template '{AUDIT_TEMPLATE_NAME}' appliquÃ©")
     except Exception as exc:
         print(f"  ! Index template: {exc}")
 
-    # 3. Indices métier
+    # 3. Indices mÃ©tier
     for name, body in INDICES.items():
         try:
             if not await es.indices.exists(index=name):
                 await es.indices.create(index=name, body=body)
-                print(f"  ✓ Index créé : {name}")
+                print(f"  âœ“ Index crÃ©Ã© : {name}")
             else:
-                print(f"  • Index existant : {name}")
+                print(f"  â€¢ Index existant : {name}")
         except Exception as exc:
             print(f"  ! Index {name}: {exc}")
 
-    # 4. Audit & SOAR via template (création à la demande, alias)
+    # 4. Audit & SOAR via template (crÃ©ation Ã  la demande, alias)
     for name in TEMPLATE_INDEX:
         try:
             if not await es.indices.exists(index=name):
-                # On crée un index simple, le template s'appliquera aux nouveaux index
+                # On crÃ©e un index simple, le template s'appliquera aux nouveaux index
                 # correspondants au pattern (alias futurs).
                 await es.indices.create(
                     index=name,
                     settings={"index.lifecycle.name": "audit-ilm-policy"},
                 )
-                print(f"  ✓ Index audit/SOAR créé : {name}")
+                print(f"  âœ“ Index audit/SOAR crÃ©Ã© : {name}")
         except Exception as exc:
             print(f"  ! Index {name}: {exc}")
 
     await es.close()
-    print("\nInitialisation terminée.")
+    print("\nInitialisation terminÃ©e.")
 
 
 if __name__ == "__main__":

@@ -1,4 +1,4 @@
-"""scripts/simulate_attack.py — Simulation brute-force SSH (déclenche alerte HIGH)"""
+ï»¿"""scripts/simulate_attack.py â€” Simulation brute-force SSH (dÃ©clenche alerte HIGH)"""
 import asyncio, os, uuid
 from datetime import datetime, timezone, timedelta
 from elasticsearch import AsyncElasticsearch
@@ -13,6 +13,6 @@ async def main():
     for i in range(10):
         doc={"source_id":"simulation","timestamp":(now-timedelta(seconds=20-i*2)).isoformat(),"host":"srv-ssh-01","source_ip":"10.0.0.99","log_type":"auth","severity":"warning","raw_message":f"Failed password for root from 10.0.0.99 port {5000+i} ssh2","normalized_fields":{"username":"root","process":"sshd","message":"Failed password"},"tags":["auth","warning"],"is_flagged":False,"archived":False,"retention_expiry":(now+timedelta(days=30)).isoformat()}
         await es.index(index="idx-logs",document=doc)
-    print("? 10 logs d attaque insérés ? le moteur de corrélation déclenchera une alerte HIGH")
+    print("? 10 logs d attaque insÃ©rÃ©s ? le moteur de corrÃ©lation dÃ©clenchera une alerte HIGH")
     await es.close()
 if __name__=="__main__": asyncio.run(main())

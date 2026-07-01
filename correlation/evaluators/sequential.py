@@ -1,14 +1,14 @@
-"""
-evaluators/sequential.py — Évaluateur de règles séquentielles (RF-COR-02)
+﻿"""
+evaluators/sequential.py â€” Ã‰valuateur de rÃ¨gles sÃ©quentielles (RF-COR-02)
 
-Évalue une règle de type `sequentielle` : vérifie que chaque étape
-(steps = liste de {field, value}) trouve au moins un log dans la fenêtre
+Ã‰value une rÃ¨gle de type `sequentielle` : vÃ©rifie que chaque Ã©tape
+(steps = liste de {field, value}) trouve au moins un log dans la fenÃªtre
 temporelle.
 
-Améliorations :
+AmÃ©liorations :
   * import absolu ;
   * validation explicite que `steps` n'est pas vide ;
-  * retourne les IDs de chaque étape (utile pour l'alerte) ;
+  * retourne les IDs de chaque Ã©tape (utile pour l'alerte) ;
   * logging explicite des matches partiels.
 """
 
@@ -24,7 +24,7 @@ logger = logging.getLogger("correlation.evaluators.sequential")
 
 
 class SequentialEvaluator:
-    """Règle de type `sequentielle` — vérifie une séquence d'événements."""
+    """RÃ¨gle de type `sequentielle` â€” vÃ©rifie une sÃ©quence d'Ã©vÃ©nements."""
 
     def __init__(self, es: AsyncElasticsearch) -> None:
         self.es = es
@@ -33,7 +33,7 @@ class SequentialEvaluator:
         cond: Dict[str, Any] = rule.get("condition", {})
         steps: List[Dict[str, Any]] = cond.get("steps") or []
         if not steps:
-            logger.warning("Règle séquentielle sans steps : %s", rule.get("id"))
+            logger.warning("RÃ¨gle sÃ©quentielle sans steps : %s", rule.get("id"))
             return False, []
 
         window = int(rule.get("fenetre_temporelle_s", 300))
@@ -44,7 +44,7 @@ class SequentialEvaluator:
             field = step.get("field")
             value = step.get("value")
             if not field or value is None:
-                logger.warning("Step mal formé dans la règle %s : %s", rule.get("id"), step)
+                logger.warning("Step mal formÃ© dans la rÃ¨gle %s : %s", rule.get("id"), step)
                 return False, []
             res = await self.es.search(
                 index="idx-logs",

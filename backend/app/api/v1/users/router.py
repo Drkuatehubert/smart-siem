@@ -1,17 +1,17 @@
-"""
-router.py — Endpoints de gestion des utilisateurs (durcis)
+﻿"""
+router.py â€” Endpoints de gestion des utilisateurs (durcis)
 
-Responsable : Chef de Projet & Sécurité
+Responsable : Chef de Projet & SÃ©curitÃ©
 Exigences : RF-SEC-02, RF-SEC-04
 
 Endpoints (tous sous /api/v1/users) :
-  GET    /                  — liste paginée (admin/auditeur)
-  GET    /{user_id}         — détail (admin/auditeur)
-  POST   /                  — création (admin)
-  PATCH  /{user_id}         — modification partielle (admin, last-admin guard)
-  DELETE /{user_id}         — suppression (admin, last-admin guard)
-  POST   /{user_id}/disable — désactivation (admin, SOAR-friendly)
-  POST   /{user_id}/enable  — réactivation (admin)
+  GET    /                  â€” liste paginÃ©e (admin/auditeur)
+  GET    /{user_id}         â€” dÃ©tail (admin/auditeur)
+  POST   /                  â€” crÃ©ation (admin)
+  PATCH  /{user_id}         â€” modification partielle (admin, last-admin guard)
+  DELETE /{user_id}         â€” suppression (admin, last-admin guard)
+  POST   /{user_id}/disable â€” dÃ©sactivation (admin, SOAR-friendly)
+  POST   /{user_id}/enable  â€” rÃ©activation (admin)
 """
 
 from __future__ import annotations

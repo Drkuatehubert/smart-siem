@@ -1,4 +1,4 @@
-"""test_api_auth.py — Tests intégration /auth"""
+ï»¿"""test_api_auth.py â€” Tests intÃ©gration /auth"""
 from fastapi.testclient import TestClient
 from app.main import app
 

@@ -1,13 +1,13 @@
-"""
-service.py — Lecture et export du journal d'audit
+﻿"""
+service.py â€” Lecture et export du journal d'audit
 
-Responsable : Chef de Projet & Sécurité
+Responsable : Chef de Projet & SÃ©curitÃ©
 Index : idx-audit-log (append-only, ILM 7 ans)
 
 Fonctions :
-  * get_audit_logs          — recherche paginée avec filtres
-  * get_failed_logins       — agrège les échecs de connexion
-  * export_audit_logs       — streaming CSV/JSONL (max 100k rows)
+  * get_audit_logs          â€” recherche paginÃ©e avec filtres
+  * get_failed_logins       â€” agrÃ¨ge les Ã©checs de connexion
+  * export_audit_logs       â€” streaming CSV/JSONL (max 100k rows)
 """
 
 from __future__ import annotations

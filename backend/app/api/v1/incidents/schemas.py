@@ -1,4 +1,4 @@
-from typing import Optional, List
+﻿from typing import Optional, List
 from pydantic import BaseModel
 class IncidentCreate(BaseModel):
     alert_id: Optional[str] = None

@@ -1,13 +1,17 @@
-# elasticsearch.yml — Configuration Elasticsearch 8.x
+ï»¿# elasticsearch.yml â€” Configuration Elasticsearch 8.x
 cluster.name: smart-siem
 node.name: siem-node-1
 network.host: 0.0.0.0
 http.port: 9200
 discovery.type: single-node
 
-# Sécurité xpack
+# SÃ©curitÃ© xpack
 xpack.security.enabled: true
-xpack.security.http.ssl.enabled: false
+xpack.security.http.ssl.enabled: true
+xpack.security.http.ssl.key: /usr/share/elasticsearch/config/certs/elasticsearch.key
+xpack.security.http.ssl.certificate: /usr/share/elasticsearch/config/certs/elasticsearch.crt
+xpack.security.http.ssl.certificate_authorities: ["/usr/share/elasticsearch/config/certs/ca.pem"]
+xpack.security.http.ssl.supported_protocols: ["TLSv1.2", "TLSv1.3"]
 
 # Performance
 bootstrap.memory_lock: false

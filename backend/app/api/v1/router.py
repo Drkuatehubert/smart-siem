@@ -1,4 +1,4 @@
-"""router.py — Agrégateur principal des routers v1"""
+﻿"""router.py â€” AgrÃ©gateur principal des routers v1"""
 from fastapi import APIRouter
 from app.api.v1.auth.router import router as auth_router
 from app.api.v1.audit.router import router as audit_router

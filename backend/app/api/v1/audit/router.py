@@ -1,8 +1,8 @@
-"""
-router.py — Endpoints du journal d'audit (durcis)
+﻿"""
+router.py â€” Endpoints du journal d'audit (durcis)
 
-Responsable : Chef de Projet & Sécurité
-Exigences : RF-SEC-03 — Admin et Auditeur (lecture seule)
+Responsable : Chef de Projet & SÃ©curitÃ©
+Exigences : RF-SEC-03 â€” Admin et Auditeur (lecture seule)
 """
 
 from __future__ import annotations
@@ -48,8 +48,8 @@ async def list_audit_logs(
 @router.get(
     "/failed-logins",
     response_model=FailedLoginsResponse,
-    summary="Échecs de connexion",
-    description="Agrège les `connexion_echouee` et `compte_verrouille`.",
+    summary="Ã‰checs de connexion",
+    description="AgrÃ¨ge les `connexion_echouee` et `compte_verrouille`.",
 )
 async def list_failed_logins(
     from_date: Optional[str] = Query(None),
@@ -70,7 +70,7 @@ async def list_failed_logins(
 @router.get(
     "/logs/export",
     summary="Export streaming du journal d'audit (CSV/JSONL)",
-    description="Renvoie un flux streaming — la lecture n'est pas paginée côté client.",
+    description="Renvoie un flux streaming â€” la lecture n'est pas paginÃ©e cÃ´tÃ© client.",
 )
 async def export_logs(
     format: str = Query("csv", pattern=r"^(csv|jsonl)$"),

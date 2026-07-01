@@ -1,4 +1,4 @@
-"""scripts/seed_users.py — Création des utilisateurs par défaut"""
+ï»¿"""scripts/seed_users.py â€” CrÃ©ation des utilisateurs par dÃ©faut"""
 import asyncio, os, bcrypt
 from elasticsearch import AsyncElasticsearch
 from datetime import datetime, timezone
@@ -17,6 +17,6 @@ async def main():
         existing=await es.search(index="idx-users",body={"query":{"term":{"username":u["username"]}},"size":1})
         if existing["hits"]["hits"]: print(f"  ? Existant: {u['username']}"); continue
         doc={**{k:v for k,v in u.items() if k!="password"},"password_hash":bcrypt.hashpw(u["password"].encode(),bcrypt.gensalt(12)).decode(),"is_active":True,"created_at":datetime.now(timezone.utc).isoformat()}
-        await es.index(index="idx-users",document=doc); print(f"  ? Créé: {u['username']}")
+        await es.index(index="idx-users",document=doc); print(f"  ? CrÃ©Ã©: {u['username']}")
     await es.close()
 if __name__=="__main__": asyncio.run(main())

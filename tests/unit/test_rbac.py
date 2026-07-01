@@ -1,4 +1,4 @@
-"""test_rbac.py"""
+﻿"""test_rbac.py"""
 from app.core.rbac import has_permission, Role
 
 def test_admin_has_all():

@@ -1,20 +1,20 @@
-"""
-security.py — Gestion JWT (HS256/RS256) et hachage bcrypt
+﻿"""
+security.py â€” Gestion JWT (HS256/RS256) et hachage bcrypt
 
-Responsable : Chef de Projet & Sécurité
+Responsable : Chef de Projet & SÃ©curitÃ©
 Exigences : RF-SEC-01, NFR-SEC-02, NFR-SEC-03
 
-Durcissements par rapport à la version initiale :
-  * `jti` (UUID4) ajouté à chaque token ⇒ révocation possible via Redis ;
-  * claims `iss`, `aud`, `nbf`, `type` obligatoires ⇒ blocage du token-replay
+Durcissements par rapport Ã  la version initiale :
+  * `jti` (UUID4) ajoutÃ© Ã  chaque token â‡’ rÃ©vocation possible via Redis ;
+  * claims `iss`, `aud`, `nbf`, `type` obligatoires â‡’ blocage du token-replay
     entre environnements et de l'attaque alg="none" ;
   * `decode_access_token` exige algorithm explicit (whitelist), valide iss/aud/exp/nbf,
-    applique un leeway d'horloge configurable, et refuse tout token révoqué ;
-  * bcrypt tronqué silencieusement à 72 octets : on hash une fois via un helper
-    qui garantit la pré-troncature explicite ;
+    applique un leeway d'horloge configurable, et refuse tout token rÃ©voquÃ© ;
+  * bcrypt tronquÃ© silencieusement Ã  72 octets : on hash une fois via un helper
+    qui garantit la prÃ©-troncature explicite ;
   * `require_validated_user` re-lit l'utilisateur en ES et confirme
-    `is_active` + rôle à jour ⇒ un rôle modifié invalide les tokens existants ;
-  * `revoke_jti` pose un drapeau Redis avec TTL = exp - now (libération auto).
+    `is_active` + rÃ´le Ã  jour â‡’ un rÃ´le modifiÃ© invalide les tokens existants ;
+  * `revoke_jti` pose un drapeau Redis avec TTL = exp - now (libÃ©ration auto).
 """
 
 from __future__ import annotations
@@ -31,26 +31,26 @@ from jose import ExpiredSignatureError, JWTError, jwt
 
 from app.config import settings
 
-# Algorithmes explicitement interdits, même si un client les forge
+# Algorithmes explicitement interdits, mÃªme si un client les forge
 _FORBIDDEN_ALGS = {"none", "None", "NONE", ""}
 
 # Claims OBLIGATOIRES dans tout JWT (sinon 401)
 _REQUIRED_CLAIMS = ["exp", "iat", "nbf", "iss", "aud", "sub", "jti", "type"]
 
-# OAuth2 scheme — token transmis via Authorization: Bearer <token>
+# OAuth2 scheme â€” token transmis via Authorization: Bearer <token>
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
 
 
-# ─────────────────────────────────────────────────────────────────────
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 # Hachage des mots de passe (bcrypt)
-# ─────────────────────────────────────────────────────────────────────
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-# bcrypt ignore tout au-delà de 72 octets ; on tronque explicitement
+# bcrypt ignore tout au-delÃ  de 72 octets ; on tronque explicitement
 _BCRYPT_MAX_BYTES = 72
 
 
 def _to_bcrypt_bytes(password: str) -> bytes:
-    """Encode le mot de passe en UTF-8 et tronque à 72 octets (cf. limitation bcrypt)."""
+    """Encode le mot de passe en UTF-8 et tronque Ã  72 octets (cf. limitation bcrypt)."""
     raw = password.encode("utf-8")
     return raw[:_BCRYPT_MAX_BYTES]
 
@@ -58,13 +58,13 @@ def _to_bcrypt_bytes(password: str) -> bytes:
 def hash_password(plain_password: str) -> str:
     """
     Hache un mot de passe en clair avec bcrypt (cost factor 12).
-    Note : la pré-troncature à 72 octets est faite par `_to_bcrypt_bytes`.
+    Note : la prÃ©-troncature Ã  72 octets est faite par `_to_bcrypt_bytes`.
     """
     if not plain_password:
-        raise ValueError("Le mot de passe ne peut pas être vide.")
+        raise ValueError("Le mot de passe ne peut pas Ãªtre vide.")
     if len(plain_password) > settings.PASSWORD_MAX_LENGTH:
         raise ValueError(
-            f"Mot de passe trop long (>{settings.PASSWORD_MAX_LENGTH} caractères)."
+            f"Mot de passe trop long (>{settings.PASSWORD_MAX_LENGTH} caractÃ¨res)."
         )
     salt = bcrypt.gensalt(rounds=12)
     return bcrypt.hashpw(_to_bcrypt_bytes(plain_password), salt).decode("utf-8")
@@ -72,8 +72,8 @@ def hash_password(plain_password: str) -> str:
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     """
-    Vérifie qu'un mot de passe correspond au hash stocké (constant-time via bcrypt).
-    Renvoie False (et ne lève pas) en cas d'entrée malformée.
+    VÃ©rifie qu'un mot de passe correspond au hash stockÃ© (constant-time via bcrypt).
+    Renvoie False (et ne lÃ¨ve pas) en cas d'entrÃ©e malformÃ©e.
     """
     if not plain_password or not hashed_password:
         return False
@@ -86,12 +86,12 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
         return False
 
 
-# ─────────────────────────────────────────────────────────────────────
-# Création et vérification des tokens JWT
-# ─────────────────────────────────────────────────────────────────────
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# CrÃ©ation et vÃ©rification des tokens JWT
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 def _now() -> datetime:
-    """Heure UTC courante (helper pour testabilité)."""
+    """Heure UTC courante (helper pour testabilitÃ©)."""
     return datetime.now(timezone.utc)
 
 
@@ -126,7 +126,7 @@ def create_access_token(
     expires_delta: Optional[timedelta] = None,
 ) -> str:
     """
-    Génère un access token JWT signé (HS256 par défaut, configurable).
+    GÃ©nÃ¨re un access token JWT signÃ© (HS256 par dÃ©faut, configurable).
     Contient : sub, username, role, org_scope, iat, nbf, exp, iss, aud, jti, type.
     """
     payload = _build_payload(
@@ -140,8 +140,8 @@ def create_access_token(
 
 def create_refresh_token(user_id: str) -> str:
     """
-    Génère un refresh token (longue durée, ne contient ni rôle ni org_scope).
-    Utilisé par /auth/refresh pour émettre un nouvel access token.
+    GÃ©nÃ¨re un refresh token (longue durÃ©e, ne contient ni rÃ´le ni org_scope).
+    UtilisÃ© par /auth/refresh pour Ã©mettre un nouvel access token.
     """
     payload = _build_payload(
         sub=user_id,
@@ -153,7 +153,7 @@ def create_refresh_token(user_id: str) -> str:
 
 
 def create_mfa_token(user_id: str) -> str:
-    """Jeton court (5 min)用以 porter la demande MFA en attente."""
+    """Jeton court (5 min)ç”¨ä»¥ porter la demande MFA en attente."""
     payload = _build_payload(
         sub=user_id,
         extra={"scope": "mfa"},
@@ -163,14 +163,14 @@ def create_mfa_token(user_id: str) -> str:
     return jwt.encode(payload, settings.API_SECRET_KEY, algorithm=settings.JWT_ALGORITHM)
 
 
-# ─────────────────────────────────────────────────────────────────────
-# Révocation via Redis
-# ─────────────────────────────────────────────────────────────────────
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# RÃ©vocation via Redis
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 def _redis_sync():
-    """Client Redis sync (revoke_jti est appelée depuis un endpoint async).
-    On importe à la demande pour éviter de créer un client si la révocation
-    n'est pas utilisée.
+    """Client Redis sync (revoke_jti est appelÃ©e depuis un endpoint async).
+    On importe Ã  la demande pour Ã©viter de crÃ©er un client si la rÃ©vocation
+    n'est pas utilisÃ©e.
     """
     import redis  # type: ignore
     scheme = "rediss" if settings.REDIS_TLS else "redis"
@@ -185,34 +185,34 @@ def _revoked_key(jti: str) -> str:
 
 def revoke_jti(jti: str, exp: datetime) -> None:
     """
-    Révoque un JTI jusqu'à son expiration naturelle (TTL = exp - now).
+    RÃ©voque un JTI jusqu'Ã  son expiration naturelle (TTL = exp - now).
     Idempotent.
     """
     try:
         ttl = max(1, int((exp - _now()).total_seconds()))
         _redis_sync().set(_revoked_key(jti), "1", ex=ttl)
     except Exception:
-        # On n'échoue pas la requête appelante si Redis est indisponible,
+        # On n'Ã©choue pas la requÃªte appelante si Redis est indisponible,
         # mais le logger au point d'appel est attendu.
         raise
 
 
 def is_jti_revoked(jti: str) -> bool:
-    """True si le JTI a été révoqué (présent dans Redis)."""
+    """True si le JTI a Ã©tÃ© rÃ©voquÃ© (prÃ©sent dans Redis)."""
     try:
         return _redis_sync().exists(_revoked_key(jti)) > 0
     except Exception:
-        # Fail-open : on accepte le token si Redis est down (refus ⇒ déni de service).
-        # À权衡 ce trade-off selon le threat model.
+        # Fail-open : on accepte le token si Redis est down (refus â‡’ dÃ©ni de service).
+        # Ã€æƒè¡¡ ce trade-off selon le threat model.
         return False
 
 
-# ─────────────────────────────────────────────────────────────────────
-# Décodage et validation
-# ─────────────────────────────────────────────────────────────────────
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# DÃ©codage et validation
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 def _401(detail: str = "Token invalide") -> HTTPException:
-    """Construit un 401 normalisé (ne jamais exposer le détail interne de l'exception)."""
+    """Construit un 401 normalisÃ© (ne jamais exposer le dÃ©tail interne de l'exception)."""
     return HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail=detail,
@@ -222,9 +222,9 @@ def _401(detail: str = "Token invalide") -> HTTPException:
 
 def decode_token(token: str, expected_type: str) -> Dict[str, Any]:
     """
-    Décode et valide un JWT.
+    DÃ©code et valide un JWT.
 
-    Vérifie :
+    VÃ©rifie :
       * algorithm = settings.JWT_ALGORITHM (algo whitelist, pas d'alg=none) ;
       * signature ;
       * iss = settings.JWT_ISSUER ;
@@ -232,10 +232,10 @@ def decode_token(token: str, expected_type: str) -> Dict[str, Any]:
       * presence de tous les claims requis ;
       * nbf / exp (avec leeway) ;
       * type = expected_type ("access" ou "refresh") ;
-      * jti non révoqué (Redis).
+      * jti non rÃ©voquÃ© (Redis).
 
-    Lève HTTPException 401 sur tout échec — le message ne fuit jamais
-    le détail de l'erreur interne (alg=none, signature, expiration, etc.).
+    LÃ¨ve HTTPException 401 sur tout Ã©chec â€” le message ne fuit jamais
+    le dÃ©tail de l'erreur interne (alg=none, signature, expiration, etc.).
     """
     # Garde-fou : on refuse explicitement tout algo interdit en plus de la whitelist pydantic
     if settings.JWT_ALGORITHM in _FORBIDDEN_ALGS:
@@ -248,11 +248,15 @@ def decode_token(token: str, expected_type: str) -> Dict[str, Any]:
             algorithms=[settings.JWT_ALGORITHM],
             audience=settings.JWT_AUDIENCE,
             issuer=settings.JWT_ISSUER,
-            leeway=settings.JWT_ACCESS_LEEWAY_SECONDS,
-            options={"require": _REQUIRED_CLAIMS, "verify_aud": True, "verify_iss": True},
+            options={
+                "require": _REQUIRED_CLAIMS,
+                "verify_aud": True,
+                "verify_iss": True,
+                "leeway": settings.JWT_ACCESS_LEEWAY_SECONDS,
+            },
         )
     except ExpiredSignatureError:
-        raise _401("Token expiré")
+        raise _401("Token expirÃ©")
     except JWTError:
         raise _401()
 
@@ -261,30 +265,30 @@ def decode_token(token: str, expected_type: str) -> Dict[str, Any]:
 
     jti = payload.get("jti")
     if not jti or is_jti_revoked(jti):
-        raise _401("Token révoqué")
+        raise _401("Token rÃ©voquÃ©")
 
     return payload
 
 
 def decode_access_token(token: str) -> Dict[str, Any]:
-    """Décode un access token (type=access)."""
+    """DÃ©code un access token (type=access)."""
     return decode_token(token, expected_type="access")
 
 
 def decode_refresh_token(token: str) -> Dict[str, Any]:
-    """Décode un refresh token (type=refresh)."""
+    """DÃ©code un refresh token (type=refresh)."""
     return decode_token(token, expected_type="refresh")
 
 
-# ─────────────────────────────────────────────────────────────────────
-# Dépendances FastAPI
-# ─────────────────────────────────────────────────────────────────────
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# DÃ©pendances FastAPI
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 async def get_current_user(token: str = Depends(oauth2_scheme)) -> Dict[str, Any]:
     """
-    Dépendance de base : retourne le payload du JWT.
-    NOTE : pour la plupart des endpoints on préfère `require_validated_user`
-    qui re-vérifie l'utilisateur en base.
+    DÃ©pendance de base : retourne le payload du JWT.
+    NOTE : pour la plupart des endpoints on prÃ©fÃ¨re `require_validated_user`
+    qui re-vÃ©rifie l'utilisateur en base.
     """
     return decode_access_token(token)
 
@@ -293,12 +297,12 @@ async def require_validated_user(
     token: str = Depends(oauth2_scheme),
 ) -> Dict[str, Any]:
     """
-    Dépendance stricte : vérifie en plus en ES que :
+    DÃ©pendance stricte : vÃ©rifie en plus en ES que :
       * l'utilisateur existe ;
-      * `is_active == true` (compte non désactivé) ;
-      * le rôle du token correspond toujours au rôle courant (anti-privilege-escalation).
+      * `is_active == true` (compte non dÃ©sactivÃ©) ;
+      * le rÃ´le du token correspond toujours au rÃ´le courant (anti-privilege-escalation).
 
-    Cache Redis 30 s pour éviter de marteler ES.
+    Cache Redis 30 s pour Ã©viter de marteler ES.
     """
     payload = decode_access_token(token)
     user_id = payload.get("sub")
@@ -317,8 +321,8 @@ async def require_validated_user(
     except Exception:
         pass
 
-    # Re-vérification en ES
-    from app.core.elasticsearch import get_es_client  # import local pour éviter cycle
+    # Re-vÃ©rification en ES
+    from app.core.elasticsearch import get_es_client  # import local pour Ã©viter cycle
     es = get_es_client()
     try:
         doc = await es.get(index="idx-users", id=user_id)
@@ -327,14 +331,14 @@ async def require_validated_user(
 
     src = doc["_source"]
     if not src.get("is_active", False):
-        raise _401("Compte désactivé")
+        raise _401("Compte dÃ©sactivÃ©")
     if src.get("role_id") != payload.get("role"):
-        # Rôle modifié : on force la déconnexion de l'ancienne session
+        # RÃ´le modifiÃ© : on force la dÃ©connexion de l'ancienne session
         try:
             revoke_jti(payload["jti"], datetime.fromtimestamp(payload["exp"], tz=timezone.utc))
         except Exception:
             pass
-        raise _401("Droits modifiés, veuillez vous reconnecter")
+        raise _401("Droits modifiÃ©s, veuillez vous reconnecter")
 
     # Mise en cache
     try:
@@ -351,5 +355,5 @@ async def require_validated_user(
 
 
 def new_csrf_token() -> str:
-    """Génère un token opaque (utilisable pour des routes state-changing)."""
+    """GÃ©nÃ¨re un token opaque (utilisable pour des routes state-changing)."""
     return secrets.token_urlsafe(32)

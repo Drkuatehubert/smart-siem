@@ -1,4 +1,4 @@
-from typing import Optional, List
+﻿from typing import Optional, List
 from pydantic import BaseModel
 class SourceCreate(BaseModel):
     nom: str; type: str

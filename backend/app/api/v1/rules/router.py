@@ -1,8 +1,8 @@
-from fastapi import APIRouter, Depends
+ï»¿from fastapi import APIRouter, Depends
 from app.api.v1.rules.schemas import RuleCreate, RuleListResponse
 from app.api.v1.rules.service import list_rules, create_rule, delete_rule
 from app.core.rbac import require_admin, require_permission
-router = APIRouter(prefix="/rules", tags=["Règles de Corrélation"])
+router = APIRouter(prefix="/rules", tags=["RÃ¨gles de CorrÃ©lation"])
 @router.get("", response_model=RuleListResponse)
 async def get_rules(page: int = 1, size: int = 50, _=Depends(require_permission("rules:read"))):
     return await list_rules(page, size)

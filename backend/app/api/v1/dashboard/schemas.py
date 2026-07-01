@@ -1,4 +1,4 @@
-from typing import List
+﻿from typing import List
 from pydantic import BaseModel
 class AlertSummary(BaseModel):
     niveau: str; count: int

@@ -1,11 +1,32 @@
-version: "3.9"
+﻿version: "3.9"
 
 services:
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.13.0
+    environment:
+      - discovery.type=single-node
+      - ES_JAVA_OPTS=-Xms512m -Xmx512m
+      - ELASTIC_PASSWORD=${ELASTICSEARCH_PASSWORD}
+      - xpack.security.enabled=true
+    volumes:
+      - esdata:/usr/share/elasticsearch/data
+      - ./docker/elasticsearch/elasticsearch.yml:/usr/share/elasticsearch/config/elasticsearch.yml:ro
+      - ./docker/certs:/usr/share/elasticsearch/config/certs:ro
+    ports:
+      - "9200:9200"
+    healthcheck:
+      test: ["CMD-SHELL", "curl --cacert /usr/share/elasticsearch/config/certs/ca.pem -sf -u elastic:${ELASTICSEARCH_PASSWORD} https://localhost:9200/_cluster/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    restart: unless-stopped
+
   redis:
     image: redis:7-alpine
     command: redis-server /usr/local/etc/redis/redis.conf
     volumes:
       - ./docker/redis/redis.conf:/usr/local/etc/redis/redis.conf:ro
+      - ./docker/certs:/certs:ro
       - redisdata:/data
     ports:
       - "6379:6379"
@@ -15,30 +36,81 @@ services:
     build: ./backend
     env_file: .env
     depends_on:
-      - redis
+      elasticsearch:
+        condition: service_healthy
+      redis:
+        condition: service_started
     ports:
       - "8000:8000"
     volumes:
       - ./docker/certs:/certs:ro
+    environment:
+      - ELASTICSEARCH_HOST=https://elasticsearch:9200
+      - ELASTICSEARCH_CA_CERTS=/certs/ca.pem
+      - REDIS_TLS=true
+      - REDIS_CA_CERTS=/certs/ca.pem
+    restart: unless-stopped
+
+  syslog-receiver:
+    build: ./collectors/syslog_receiver
+    env_file: .env
+    ports:
+      - "514:514/udp"
+      - "514:514/tcp"
+      - "6514:6514/tcp"
+    volumes:
+      - ./docker/certs:/certs:ro
+    restart: unless-stopped
+
+  normalizer:
+    build: ./collectors/normalizer
+    env_file: .env
+    depends_on:
+      - redis
+      - elasticsearch
     restart: unless-stopped
 
   correlation:
     build: ./correlation
     env_file: .env
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+    volumes:
+      - ./docker/certs:/certs:ro
+    environment:
+      - ELASTICSEARCH_HOST=https://elasticsearch:9200
+      - ELASTICSEARCH_CA_CERTS=/certs/ca.pem
     restart: unless-stopped
 
   soar:
     build: ./soar
     env_file: .env
     depends_on:
+      - elasticsearch
       - backend
+    volumes:
+      - ./docker/certs:/certs:ro
+    environment:
+      - ELASTICSEARCH_HOST=https://elasticsearch:9200
+      - ELASTICSEARCH_CA_CERTS=/certs/ca.pem
+      - SOAR_REQUIRE_APPROVAL=true
+      - SOAR_MIN_AUTO_LEVEL=CRITICAL
+      - SOAR_DRY_RUN=true
     restart: unless-stopped
 
   reporting:
     build: ./reporting
     env_file: .env
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
     volumes:
       - reports:/app/generated_reports
+      - ./docker/certs:/certs:ro
+    environment:
+      - ELASTICSEARCH_HOST=https://elasticsearch:9200
+      - ELASTICSEARCH_CA_CERTS=/certs/ca.pem
     restart: unless-stopped
 
   frontend:
@@ -62,5 +134,6 @@ services:
     restart: unless-stopped
 
 volumes:
+  esdata:
   redisdata:
   reports:

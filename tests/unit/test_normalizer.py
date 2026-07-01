@@ -1,4 +1,4 @@
-"""test_normalizer.py"""
+﻿"""test_normalizer.py"""
 from collectors.normalizer.tagger import tag_log
 from collectors.normalizer.schema import build_normalized_doc
 

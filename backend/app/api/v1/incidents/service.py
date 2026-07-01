@@ -1,4 +1,4 @@
-from app.core.elasticsearch import get_es_client
+﻿from app.core.elasticsearch import get_es_client
 from datetime import datetime, timezone
 async def list_incidents(page=1, size=50):
     es = get_es_client()

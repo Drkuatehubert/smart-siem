@@ -1,13 +1,13 @@
 """
-rule_loader.py — Chargement et validation des règles de corrélation
+rule_loader.py â€” Chargement et validation des rÃ¨gles de corrÃ©lation
 
-Responsable : Ingénieur Data
-Exigences : RF-COR-01 (seuil), RF-COR-02 (séquentiel), RBAC admin (rules:manage)
+Responsable : IngÃ©nieur Data
+Exigences : RF-COR-01 (seuil), RF-COR-02 (sÃ©quentiel), RBAC admin (rules:manage)
 
 Ce module :
-  * charge toutes les règles actives depuis `idx-correlation-rules` ;
-  * valide chaque règle via `RuleSchema` (Pydantic) à l'import ;
-  * lève / log explicitement en cas de règle invalide (jamais silent drop) ;
+  * charge toutes les rÃ¨gles actives depuis `idx-correlation-rules` ;
+  * valide chaque rÃ¨gle via `RuleSchema` (Pydantic) Ã  l'import ;
+  * lÃ¨ve / log explicitement en cas de rÃ¨gle invalide (jamais silent drop) ;
   * expose un chargeur YAML sur disque pour `seed_rules.py`.
 """
 
@@ -26,9 +26,9 @@ from pydantic import BaseModel, Field, field_validator
 logger = logging.getLogger("correlation.rule_loader")
 
 
-# ─────────────────────────────────────────────────────────────────────
-# Schéma de validation
-# ─────────────────────────────────────────────────────────────────────
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# SchÃ©ma de validation
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 VALID_LEVELS = {"INFO", "WARNING", "HIGH", "CRITICAL"}
 KILL_CHAIN_PHASES = {
@@ -41,7 +41,7 @@ MITRE_TECHNIQUE_RE = re.compile(r"^T\d{4}(\.\d{3})?$")
 
 
 class RuleCondition(BaseModel):
-    """Sous-structure d'une règle (seuil ou séquentiel)."""
+    """Sous-structure d'une rÃ¨gle (seuil ou sÃ©quentiel)."""
     field: Optional[str] = None
     value: Optional[Any] = None
     threshold: Optional[int] = Field(default=None, ge=1, le=100_000)
@@ -51,16 +51,16 @@ class RuleCondition(BaseModel):
     @classmethod
     def _steps_non_empty(cls, v):
         if v is not None and len(v) == 0:
-            raise ValueError("steps ne peut pas être vide")
+            raise ValueError("steps ne peut pas Ãªtre vide")
         return v
 
 
 class RuleSchema(BaseModel):
-    """Schéma strict d'une règle de corrélation (durée MITRE)."""
+    """SchÃ©ma strict d'une rÃ¨gle de corrÃ©lation (durÃ©e MITRE)."""
     id: str = Field(..., min_length=3, max_length=128)
     nom: str = Field(..., min_length=3, max_length=256)
     description: str = Field(..., max_length=2048)
-    type: str = Field(..., pattern=r"^(seuil|sequentielle)$")
+    type: str = Field(..., pattern=r"^(seuil|sequentielle|cross_source|statistical)$")
     condition: RuleCondition
     fenetre_temporelle_s: int = Field(..., ge=1, le=86400 * 7)
     mitre_tactic: str = Field(..., min_length=1, max_length=128)
@@ -92,14 +92,14 @@ class RuleSchema(BaseModel):
         return v
 
 
-# ─────────────────────────────────────────────────────────────────────
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 # Chargement depuis Elasticsearch
-# ─────────────────────────────────────────────────────────────────────
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 async def load_rules(es) -> List[Dict[str, Any]]:
     """
-    Charge les règles actives depuis `idx-correlation-rules`.
-    Valide chacune via `RuleSchema` ; les règles invalides sont logguées
+    Charge les rÃ¨gles actives depuis `idx-correlation-rules`.
+    Valide chacune via `RuleSchema` ; les rÃ¨gles invalides sont logguÃ©es
     (en WARNING) puis exclues.
     """
     try:
@@ -109,7 +109,7 @@ async def load_rules(es) -> List[Dict[str, Any]]:
             size=500,
         )
     except Exception as exc:
-        logger.error("Chargement des règles impossible : %s", exc)
+        logger.error("Chargement des rÃ¨gles impossible : %s", exc)
         return []
 
     validated: List[Dict[str, Any]] = []
@@ -120,19 +120,19 @@ async def load_rules(es) -> List[Dict[str, Any]]:
             validated.append(doc)
         except Exception as exc:
             logger.warning(
-                "Règle invalide exclue (id=%s) : %s", hit["_id"], exc,
+                "RÃ¨gle invalide exclue (id=%s) : %s", hit["_id"], exc,
             )
     return validated
 
 
-# ─────────────────────────────────────────────────────────────────────
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 # Chargement YAML (pour seed et tests)
-# ─────────────────────────────────────────────────────────────────────
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 def load_rule_file(path: str | os.PathLike) -> Dict[str, Any]:
     """
-    Charge un YAML, valide, et renvoie le dict prêt à être indexé.
-    Lève si invalide.
+    Charge un YAML, valide, et renvoie le dict prÃªt Ã  Ãªtre indexÃ©.
+    LÃ¨ve si invalide.
     """
     with open(path, "r", encoding="utf-8") as fp:
         raw = yaml.safe_load(fp)
@@ -146,6 +146,6 @@ def load_rule_dir(directory: str | os.PathLike) -> List[Dict[str, Any]]:
         try:
             out.append(load_rule_file(p))
         except Exception as exc:
-            logger.error("Règle %s invalide : %s", p, exc)
+            logger.error("RÃ¨gle %s invalide : %s", p, exc)
             raise
     return out

@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends
+﻿from fastapi import APIRouter, Depends
 from app.api.v1.reports.schemas import ReportRequest, ReportOut
 from app.core.rbac import require_permission
 router = APIRouter(prefix="/reports", tags=["Rapports"])

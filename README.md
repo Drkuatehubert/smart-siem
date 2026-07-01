@@ -1,14 +1,14 @@
-# Smart SIEM — Système de Gestion et d'Analyse des Événements de Sécurité
+ï»¿# Smart SIEM â€” SystÃ¨me de Gestion et d'Analyse des Ã‰vÃ©nements de SÃ©curitÃ©
 
-> Projet intégrateur | Équipe 5 étudiants | 2 semaines
+> Projet intÃ©grateur | Ã‰quipe 5 Ã©tudiants | 2 semaines
 
 ## Stack technique
 - **Backend** : FastAPI (Python 3.12) + Elasticsearch 8 + Redis Streams
 - **Frontend** : React + Vite
 - **Infrastructure** : Docker Compose + Nginx (TLS)
-- **Détection** : Moteur de corrélation MITRE ATT&CK + UEBA
+- **DÃ©tection** : Moteur de corrÃ©lation MITRE ATT&CK + UEBA
 
-## Démarrage rapide
+## DÃ©marrage rapide
 
 ```bash
 # 1. Cloner
@@ -16,38 +16,41 @@ git clone https://github.com/votre-org/smart-siem.git && cd smart-siem
 
 # 2. Configuration
 cp .env.example .env
-# Éditer .env avec vos valeurs
+# Ã‰diter .env avec vos valeurs
 
 # 3. Certificats TLS
 bash docker/certs/generate-certs.sh
 
-# 4. Démarrer la stack
+# 4. DÃ©marrer la stack
 docker compose up -d
 
 # 5. Initialiser Elasticsearch (13 index)
 docker compose exec backend python scripts/init_elasticsearch.py
 
-# 6. Données de test
+# 6. DonnÃ©es de test
 docker compose exec backend python scripts/seed_users.py
 docker compose exec backend python scripts/seed_data.py
 docker compose exec backend python scripts/seed_rules.py
 ```
 
-## Accès
+## AccÃ¨s
 | Service | URL | Identifiant |
 |---|---|---|
-| API Swagger | https://localhost/api/docs | — |
+| API Swagger | https://localhost/api/docs | â€” |
 | Frontend | https://localhost | admin / Admin@2024! |
-| Elasticsearch | http://localhost:9200 | elastic / (voir .env) |
+| Elasticsearch | https://localhost:9200 | elastic / (voir .env) |
 
 ## Architecture
 Voir [docs/architecture.md](docs/architecture.md)
 
-## Équipe
-| Rôle | Responsabilité |
+## Documentation cybersecurite
+Voir [docs/cybersecurity/00_resume_global.md](docs/cybersecurity/00_resume_global.md) pour le resume des renforcements SOAR, TLS, UEBA et correlation.
+
+## Ã‰quipe
+| RÃ´le | ResponsabilitÃ© |
 |---|---|
-| Chef de Projet & Sécurité | JWT, RBAC, audit, conformité |
-| Ingénieur Infrastructure | Docker, agents, Syslog |
-| Ingénieur Data | Normalisation, corrélation, UEBA |
-| Développeur Backend | API logs, alertes, incidents |
-| Développeur Frontend | Dashboard, recherche, rapports |
+| Chef de Projet & SÃ©curitÃ© | JWT, RBAC, audit, conformitÃ© |
+| IngÃ©nieur Infrastructure | Docker, agents, Syslog |
+| IngÃ©nieur Data | Normalisation, corrÃ©lation, UEBA |
+| DÃ©veloppeur Backend | API logs, alertes, incidents |
+| DÃ©veloppeur Frontend | Dashboard, recherche, rapports |

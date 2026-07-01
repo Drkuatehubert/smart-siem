@@ -1,4 +1,4 @@
-"""alerts/service.py — Gestion des alertes dans ES"""
+﻿"""alerts/service.py â€” Gestion des alertes dans ES"""
 from datetime import datetime, timezone
 from typing import Optional
 from app.core.elasticsearch import get_es_client

@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends
+﻿from fastapi import APIRouter, Depends
 from app.api.v1.dashboard.schemas import DashboardSummary
 from app.api.v1.dashboard.service import get_summary
 from app.core.rbac import require_any_role
