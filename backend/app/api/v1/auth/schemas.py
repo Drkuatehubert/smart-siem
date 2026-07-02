@@ -9,7 +9,7 @@ Modèles exposés :
   * TokenResponse, TokenWithProfile
   * RefreshRequest, RefreshResponse
   * MfaSetupResponse, MfaVerifyRequest
-  * PasswordChangeRequest, PasswordResetRequest, PasswordResetConfirm
+  * PasswordChangeRequest
   * UserProfile
 """
 
@@ -153,18 +153,4 @@ class PasswordChangeRequest(BaseModel):
         # Validateur Pydantic exécuté automatiquement à la construction de l'objet :
         # si le mot de passe ne respecte pas la politique, la requête est rejetée en 422
         # avant même d'atteindre la logique métier.
-        return _validate_password_strength(v)
-
-
-class PasswordResetRequest(BaseModel):
-    username: str = Field(..., min_length=3, max_length=50, pattern=r"^[a-zA-Z0-9._-]+$")
-
-
-class PasswordResetConfirm(BaseModel):
-    reset_token: str = Field(..., min_length=20)
-    new_password: str = Field(..., min_length=1, max_length=4096)
-
-    @field_validator("new_password")
-    @classmethod
-    def _check_strength(cls, v: str) -> str:
         return _validate_password_strength(v)

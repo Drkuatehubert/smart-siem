@@ -8,7 +8,6 @@ Middlewares appliqués (du plus extérieur au plus intérieur) :
   1. SecurityHeadersMiddleware — HSTS, X-Frame-Options, CSP, etc.
   2. RequestIdMiddleware — génère / propage un X-Request-Id
   3. CORSMiddleware — origins explicites, pas de wildcard
-  4. (slowapi) — rate limit sur endpoints sensibles
 
 Endpoints :
   GET  /health              — healthcheck enrichi (ES ping)
@@ -26,18 +25,14 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError  # levée quand le corps/paramètres d'une requête sont invalides
 from fastapi.middleware.cors import CORSMiddleware
-from slowapi.errors import RateLimitExceeded  # levée quand une limite de débit (rate limit) est dépassée
 
 from app.config import settings
 from app.core.elasticsearch import close_es_client, es_ping
 from app.core.exceptions import (
     generic_exception_handler,       # capte toute exception non prévue (dernier filet de sécurité)
     http_exception_handler,          # capte les HTTPException levées volontairement dans le code
-    rate_limit_exceeded_handler,     # capte les dépassements de limite de requêtes
     validation_exception_handler,    # capte les erreurs de validation de schéma (Pydantic)
 )
-from app.core.rate_limit import limiter
-from app.core.redis_client import close_redis_client
 from app.api.v1.router import api_router  # routeur qui regroupe toutes les routes /api/v1/*
 
 logger = logging.getLogger("main")
@@ -80,7 +75,7 @@ class SecurityHeadersMiddleware:
                     # Désactive explicitement certaines APIs navigateur sensibles.
                     (b"permissions-policy", b"accelerometer=(), camera=(), geolocation=()"),
                     # Politique de sécurité du contenu, définie dans config.py.
-                    (b"content-security-policy", settings.CSP_POLICY.encode("utf-8")),
+                    # (b"content-security-policy", settings.CSP_POLICY.encode("utf-8")),
                 ])
                 message["headers"] = headers
             await send(message)
@@ -139,14 +134,13 @@ class RequestIdMiddleware:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Démarrage / arrêt propre : ferme ES et Redis."""
+    """Démarrage / arrêt propre : ferme la connexion ES."""
     # Tout le code avant le `yield` s'exécute au démarrage de l'application.
     logger.info("Smart SIEM API starting (env=%s)", settings.APP_ENV)
     yield
     # Tout le code après le `yield` s'exécute à l'arrêt (ex: Ctrl+C, arrêt du conteneur),
     # ce qui permet de libérer proprement les connexions réseau ouvertes.
     await close_es_client()
-    await close_redis_client()
     logger.info("Smart SIEM API stopped")
 
 
@@ -176,10 +170,6 @@ app = FastAPI(
     **_docs_kwargs,
 )
 
-# Rate limiter : rattaché à `app.state` pour que slowapi puisse le retrouver
-# depuis n'importe quelle route décorée avec `@limiter.limit(...)`.
-app.state.limiter = limiter
-
 # Middlewares (l'ordre est important : extérieur en dernier via `add_middleware`).
 # FastAPI empile les middlewares dans l'ordre inverse d'ajout : le dernier ajouté
 # est donc le plus "extérieur" (exécuté en premier sur la requête entrante).
@@ -198,7 +188,6 @@ app.add_middleware(
 # au lieu de laisser fuiter une trace Python brute vers le client.
 app.add_exception_handler(HTTPException, http_exception_handler)
 app.add_exception_handler(RequestValidationError, validation_exception_handler)
-app.add_exception_handler(RateLimitExceeded, rate_limit_exceeded_handler)
 app.add_exception_handler(Exception, generic_exception_handler)
 
 # Router agrégateur (corrige le code mort de la version précédente) :

@@ -8,8 +8,6 @@ Durcissements par rapport à la version initiale :
   * `authenticate_user` est à durée constante (chemin unique avec bcrypt dummy
     si l'utilisateur n'existe pas) ⇒ empêche l'énumération par timing ;
   * un seul message d'erreur pour "user inconnu" et "mauvais mot de passe" ;
-  * compteurs Redis `failed_login:<username>` et `failed_login:<ip>` ;
-  * verrouillage du compte au-delà de `ACCOUNT_LOCKOUT_THRESHOLD` (423 Locked) ;
   * `last_login_at` mis à jour à chaque succès ;
   * `write_audit_log` enrichi : IP, UA, request_id, méthode, chemin, status ;
   * support MFA : si `MFA_REQUIRED` et `mfa_enabled`, on renvoie un
@@ -33,7 +31,6 @@ from app.core.security import (
     verify_password,
 )
 from app.core.elasticsearch import get_es_client
-from app.core.redis_client import get_redis_client
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -42,71 +39,6 @@ from app.core.redis_client import get_redis_client
 # Utiliser le même message pour "utilisateur inconnu" et "mot de passe incorrect"
 # empêche un attaquant de déterminer si un nom d'utilisateur donné existe (énumération).
 _ERR_INVALID = "Identifiants incorrects"
-_ERR_LOCKED = "Compte temporairement verrouillé"
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Lockout : compteurs Redis
-# ─────────────────────────────────────────────────────────────────────────────
-
-def _user_fail_key(username: str) -> str:
-    # Clé Redis comptant les échecs de connexion par nom d'utilisateur.
-    return f"failed_login:user:{username.lower()}"
-
-def _ip_fail_key(ip: str) -> str:
-    # Clé Redis comptant les échecs de connexion par IP (protège même si l'attaquant
-    # change de nom d'utilisateur à chaque tentative).
-    return f"failed_login:ip:{ip}"
-
-def _ttl_seconds() -> int:
-    # Durée de vie des compteurs, alignée sur la durée de verrouillage configurée.
-    return settings.ACCOUNT_LOCKOUT_DURATION_MIN * 60
-
-
-async def _bump_failed_login(username: str, ip: str) -> int:
-    """Incrémente les compteurs et renvoie le compteur user (TTL = lockout duration)."""
-    r = get_redis_client()
-    # pipeline() regroupe plusieurs commandes Redis en un seul aller-retour réseau,
-    # plus rapide que 4 appels séparés.
-    pipe = r.pipeline()
-    pipe.incr(_user_fail_key(username))
-    pipe.expire(_user_fail_key(username), _ttl_seconds())
-    pipe.incr(_ip_fail_key(ip))
-    pipe.expire(_ip_fail_key(ip), _ttl_seconds())
-    res = await pipe.execute()
-    return int(res[0])
-
-
-async def _reset_failed_login(username: str, ip: str) -> None:
-    # Appelé après une connexion réussie : on efface l'historique d'échecs.
-    r = get_redis_client()
-    await r.delete(_user_fail_key(username), _ip_fail_key(ip))
-
-
-async def _is_locked(user_doc: Dict[str, Any], username: str, ip: str) -> bool:
-    """Renvoie True si le compte (en ES) ou les compteurs Redis dépassent le seuil."""
-    # 1. Champ explicite dans le doc utilisateur : verrouillage déjà posé par
-    #    une tentative précédente (voir plus bas dans authenticate_user).
-    locked_until = user_doc.get("locked_until")
-    if locked_until:
-        try:
-            until = datetime.fromisoformat(locked_until.replace("Z", "+00:00"))
-            if until > datetime.now(timezone.utc):
-                return True
-        except Exception:
-            # Valeur mal formée en base : on l'ignore plutôt que de planter l'authentification.
-            pass
-    # 2. Compteur Redis : verrouillage "temps réel", même si le document ES
-    #    n'a pas encore été mis à jour (ex: écriture ES en attente).
-    r = get_redis_client()
-    user_count = await r.get(_user_fail_key(username))
-    ip_count = await r.get(_ip_fail_key(ip))
-    user_count = int(user_count) if user_count else 0
-    ip_count = int(ip_count) if ip_count else 0
-    return (
-        user_count >= settings.ACCOUNT_LOCKOUT_THRESHOLD
-        or ip_count >= settings.ACCOUNT_LOCKOUT_THRESHOLD
-    )
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -123,10 +55,9 @@ async def authenticate_user(
     """
     Authentifie un utilisateur avec mitigations :
       * timing constant (bcrypt dummy sur user manquant) ;
-      * lockout par compte ET par IP ;
       * audit `connexion_echouee` ou `connexion_reussie` systématique.
 
-    Lève 401 (mauvais identifiants) ou 423 (locked).
+    Lève 401 (mauvais identifiants).
     Renvoie le document utilisateur (avec son `id`) en cas de succès.
     """
     es = get_es_client()
@@ -162,7 +93,6 @@ async def authenticate_user(
     # mesurant le temps de réponse.
     if user is None:
         hash_password(os.urandom(16).hex())  # ~même coût qu'un vrai check
-        await _bump_failed_login(username, ip)
         await write_audit_log(
             user_id="anonymous",
             action="connexion_echouee",
@@ -178,8 +108,10 @@ async def authenticate_user(
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    # Verrouillage ?
-    if await _is_locked(user, username, ip):
+    # Vérification du mot de passe (comparaison bcrypt en temps constant).
+    password_ok = verify_password(password, user["password_hash"])
+
+    if not password_ok:
         await write_audit_log(
             user_id=user_id,
             action="connexion_echouee",
@@ -187,67 +119,20 @@ async def authenticate_user(
             user_agent=user_agent,
             request_id=request_id,
             status="failure",
-            details={"username": username, "reason": "locked"},
+            details={"username": username, "reason": "bad_password"},
         )
-        raise HTTPException(
-            status_code=status.HTTP_423_LOCKED,
-            detail=_ERR_LOCKED,
-        )
-
-    # Vérification du mot de passe (comparaison bcrypt en temps constant).
-    password_ok = verify_password(password, user["password_hash"])
-
-    if not password_ok:
-        attempts = await _bump_failed_login(username, ip)
-        # Si on dépasse le seuil, on pose locked_until dans le doc (verrouillage persistant,
-        # visible même si les compteurs Redis venaient à être perdus).
-        if attempts >= settings.ACCOUNT_LOCKOUT_THRESHOLD:
-            try:
-                until = datetime.now(timezone.utc) + timedelta(
-                    minutes=settings.ACCOUNT_LOCKOUT_DURATION_MIN
-                )
-                await es.update(
-                    index="idx-users",
-                    id=user_id,
-                    doc={"locked_until": until.isoformat()},
-                )
-            except Exception:
-                pass
-            await write_audit_log(
-                user_id=user_id,
-                action="compte_verrouille",
-                ip_address=ip,
-                user_agent=user_agent,
-                request_id=request_id,
-                status="failure",
-                details={"username": username, "attempts": attempts},
-            )
-        else:
-            await write_audit_log(
-                user_id=user_id,
-                action="connexion_echouee",
-                ip_address=ip,
-                user_agent=user_agent,
-                request_id=request_id,
-                status="failure",
-                details={"username": username, "reason": "bad_password", "attempts": attempts},
-            )
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail=_ERR_INVALID,
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    # Succès : reset lockout + maj last_login_at.
-    await _reset_failed_login(username, ip)
+    # Succès : maj last_login_at.
     try:
         await es.update(
             index="idx-users",
             id=user_id,
-            doc={
-                "last_login_at": datetime.now(timezone.utc).isoformat(),
-                "locked_until": None,
-            },
+            doc={"last_login_at": datetime.now(timezone.utc).isoformat()},
         )
     except Exception:
         # Une erreur ici ne doit pas empêcher la connexion de réussir.

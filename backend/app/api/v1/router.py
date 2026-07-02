@@ -14,13 +14,12 @@ from app.api.v1.sources.router import router as sources_router
 from app.api.v1.dashboard.router import router as dashboard_router
 from app.api.v1.reports.router import router as reports_router
 
-# ATTENTION : ce router porte déjà le préfixe "/api/v1", et main.py fait ensuite
-# `app.include_router(api_router, prefix="/api/v1")` — ce qui cumule le préfixe deux fois
-# (routes réellement montées sous /api/v1/api/v1/...). Les tests (tests/integration/test_api_auth.py)
-# et le tokenUrl OAuth2 (core/security.py) attendent, eux, un simple préfixe /api/v1 :
-# à vérifier/corriger selon le comportement réellement souhaité.
+# Le préfixe "/api/v1" est appliqué une seule fois, par main.py
+# (`app.include_router(api_router, prefix="/api/v1")`) — ne pas le répéter ici,
+# sous peine de monter les routes sous /api/v1/api/v1/... (cf. tokenUrl OAuth2
+# dans core/security.py et tests/integration/test_api_auth.py, qui attendent
+# un préfixe unique).
 api_router = APIRouter(
-    prefix="/api/v1",
     tags=["API V1"],
     responses={404: {"description": "Route introuvable"}},
 )

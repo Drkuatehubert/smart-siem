@@ -5,16 +5,16 @@ Responsable : Chef de Projet & Sécurité
 Exigences : RF-SEC-01, NFR-SEC-02, NFR-SEC-03
 
 Durcissements par rapport à la version initiale :
-  * `jti` (UUID4) ajouté à chaque token ⇒ révocation possible via Redis ;
+  * `jti` (UUID4) ajouté à chaque token (identifiant unique, conservé pour
+    traçabilité même si la révocation côté serveur n'est plus assurée) ;
   * claims `iss`, `aud`, `nbf`, `type` obligatoires ⇒ blocage du token-replay
     entre environnements et de l'attaque alg="none" ;
   * `decode_access_token` exige algorithm explicit (whitelist), valide iss/aud/exp/nbf,
-    applique un leeway d'horloge configurable, et refuse tout token révoqué ;
+    applique un leeway d'horloge configurable ;
   * bcrypt tronqué silencieusement à 72 octets : on hash une fois via un helper
     qui garantit la pré-troncature explicite ;
   * `require_validated_user` re-lit l'utilisateur en ES et confirme
-    `is_active` + rôle à jour ⇒ un rôle modifié invalide les tokens existants ;
-  * `revoke_jti` pose un drapeau Redis avec TTL = exp - now (libération auto).
+    `is_active` + rôle à jour ⇒ un rôle modifié invalide les tokens existants.
 """
 
 from __future__ import annotations
@@ -187,56 +187,6 @@ def create_mfa_token(user_id: str) -> str:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Révocation via Redis
-# ─────────────────────────────────────────────────────────────────────────────
-
-def _redis_sync():
-    """Client Redis sync (revoke_jti est appelée depuis un endpoint async).
-    On importe à la demande pour éviter de créer un client si la révocation
-    n'est pas utilisée.
-    """
-    # Import local (et non en tête de fichier) : évite de payer le coût de connexion
-    # Redis au chargement du module si cette fonction n'est jamais appelée.
-    import redis  # type: ignore
-    scheme = "rediss" if settings.REDIS_TLS else "redis"  # "rediss" = Redis over TLS
-    auth = f":{settings.REDIS_PASSWORD}@" if settings.REDIS_PASSWORD else ""
-    url = f"{scheme}://{auth}{settings.REDIS_HOST}:{settings.REDIS_PORT}/0"
-    return redis.Redis.from_url(url, decode_responses=True, socket_timeout=2)
-
-
-def _revoked_key(jti: str) -> str:
-    # Clé Redis normalisée utilisée pour marquer un token comme révoqué.
-    return f"revoked:jti:{jti}"
-
-
-def revoke_jti(jti: str, exp: datetime) -> None:
-    """
-    Révoque un JTI jusqu'à son expiration naturelle (TTL = exp - now).
-    Idempotent.
-    """
-    try:
-        # Le TTL (durée de vie de la clé Redis) est calé sur l'expiration naturelle du
-        # token : inutile de garder la clé plus longtemps que la validité du token lui-même.
-        ttl = max(1, int((exp - _now()).total_seconds()))
-        _redis_sync().set(_revoked_key(jti), "1", ex=ttl)
-    except Exception:
-        # On n'échoue pas la requête appelante si Redis est indisponible,
-        # mais le logger au point d'appel est attendu.
-        raise
-
-
-def is_jti_revoked(jti: str) -> bool:
-    """True si le JTI a été révoqué (présent dans Redis)."""
-    try:
-        return _redis_sync().exists(_revoked_key(jti)) > 0
-    except Exception:
-        # Fail-open : on accepte le token si Redis est down (refuser tout ⇒ déni de service
-        # généralisé de l'API). Ce compromis sécurité/disponibilité doit être ajusté
-        # selon le modèle de menace retenu par l'équipe sécurité.
-        return False
-
-
-# ─────────────────────────────────────────────────────────────────────────────
 # Décodage et validation
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -260,8 +210,7 @@ def decode_token(token: str, expected_type: str) -> Dict[str, Any]:
       * aud = settings.JWT_AUDIENCE ;
       * presence de tous les claims requis ;
       * nbf / exp (avec leeway) ;
-      * type = expected_type ("access" ou "refresh") ;
-      * jti non révoqué (Redis).
+      * type = expected_type ("access" ou "refresh").
 
     Lève HTTPException 401 sur tout échec — le message ne fuit jamais
     le détail de l'erreur interne (alg=none, signature, expiration, etc.).
@@ -299,9 +248,8 @@ def decode_token(token: str, expected_type: str) -> Dict[str, Any]:
     if payload.get("type") != expected_type:
         raise _401()
 
-    jti = payload.get("jti")
-    if not jti or is_jti_revoked(jti):
-        raise _401("Token révoqué")
+    if not payload.get("jti"):
+        raise _401()
 
     return payload
 
@@ -340,26 +288,11 @@ async def require_validated_user(
       * `is_active == true` (compte non désactivé) ;
       * le rôle du token correspond toujours au rôle courant (anti-privilege-escalation).
 
-    Cache Redis 30 s pour éviter de marteler ES.
     """
     payload = decode_access_token(token)
     user_id = payload.get("sub")
     if not user_id:
         raise _401()
-
-    # Cache : évite de recontacter Elasticsearch à chaque requête pour le même utilisateur.
-    try:
-        import json as _json
-        r = _redis_sync()
-        cached = r.get(f"validated_user:{user_id}")
-        if cached:
-            data = _json.loads(cached)
-            # On ne fait confiance au cache que si le rôle en cache correspond encore
-            # à celui du token (sinon on retombe sur la vérification complète ci-dessous).
-            if data.get("is_active") and data.get("role") == payload.get("role"):
-                return {**payload, "_validated": True}
-    except Exception:
-        pass
 
     # Re-vérification en ES si disponible ; sinon fallback dev pour permettre
     # l'utilisation du backend sans stack Elasticsearch complète.
@@ -371,24 +304,8 @@ async def require_validated_user(
         if not src.get("is_active", False):
             raise _401("Compte désactivé")
         if src.get("role_id") != payload.get("role"):
-            # Le rôle a changé depuis l'émission du token (ex: rétrogradé par un admin) :
-            # on révoque le token pour forcer une reconnexion avec les droits à jour.
-            try:
-                revoke_jti(payload["jti"], datetime.fromtimestamp(payload["exp"], tz=timezone.utc))
-            except Exception:
-                pass
+            # Le rôle a changé depuis l'émission du token (ex: rétrogradé par un admin).
             raise _401("Droits modifiés, veuillez vous reconnecter")
-
-        # Rafraîchit le cache pour 30 secondes.
-        try:
-            r = _redis_sync()
-            r.set(
-                f"validated_user:{user_id}",
-                _json.dumps({"is_active": True, "role": src.get("role_id")}),
-                ex=30,
-            )
-        except Exception:
-            pass
 
         return {**payload, "_validated": True, "org_scope": src.get("org_scope") or payload.get("org_scope")}
     except Exception:

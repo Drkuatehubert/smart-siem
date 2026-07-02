@@ -112,7 +112,6 @@ FastAPI servant les endpoints REST pour le frontend et les outils externes.
 - `app/core/security.py` — JWT (création/décodage), bcrypt (hash/verify), dépendance `get_current_user`
 - `app/core/rbac.py` — Matrice de permissions 3 rôles (Lecteur/Analyste/Admin), décorateurs `require_roles` / `require_permission`
 - `app/core/elasticsearch.py` — Client AsyncElasticsearch Singleton
-- `app/core/redis_client.py` — Client Redis asynchrone + `publish_log()` vers les streams
 - `app/api/v1/*/` — Routeurs par domaine (auth, users, logs, alerts, incidents, rules, sources, dashboard, reports, audit)
 
 **Fichiers clés :**
@@ -175,7 +174,6 @@ Génération de rapports PDF/Excel à partir de templates HTML.
 | `normalizer` | Elasticsearch | HTTP (port 9200) | Indexe dans `idx-logs` |
 | `correlation` | Elasticsearch | HTTP | Lit `idx-logs`, écrit dans `idx-alerts` |
 | `backend` | Elasticsearch | HTTP (client async) | Lit/écrit dans 13 indices |
-| `backend` | Redis | Redis | Publie les logs ingérés via API |
 | `soar` | Elasticsearch | HTTP | Lit `idx-alerts`, écrit dans `idx-users` |
 | `reporting` | Elasticsearch | HTTP | Lit tous les indices |
 | `frontend` | `backend` | HTTP (REST) | Via Nginx ou proxy Vite (dev) |
