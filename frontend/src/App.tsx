@@ -102,9 +102,11 @@ export default function App() {
   const handleLogout = () => {
     setIsAuthenticated(false);
     setUserEmail('');
+    localStorage.removeItem('siem_jwt_token');
     localStorage.removeItem('siem_authenticated');
     localStorage.removeItem('siem_role');
     localStorage.removeItem('siem_email');
+    localStorage.removeItem('siem_username');
   };
 
   // Render view safely based on active route state

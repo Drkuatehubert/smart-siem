@@ -13,11 +13,12 @@ export const axiosInstance: AxiosInstance = axios.create({
   },
 });
 
-// Interceptor: Automatically inject JWT Bearer Token
+// Interceptor: attache le JWT sur toutes les requêtes sortantes
 axiosInstance.interceptors.request.use(
   (config) => {
     const token = localStorage.getItem('siem_jwt_token');
-    if (token && config.headers) {
+    if (token) {
+      config.headers = config.headers ?? {};
       config.headers.Authorization = `Bearer ${token}`;
     }
     return config;

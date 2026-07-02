@@ -41,40 +41,12 @@ export default function LoginView({
   const [stepMessage, setStepMessage] = useState("");
   const [error, setError] = useState("");
 
-  // Quick-fill credentials to make it easy to test different roles
-  const quickProfiles = [
-    {
-      email: "jean.dupont@smart-siem.com",
-      label: "Analyste SOC",
-      role: "analyst" as UserRole,
-    },
-    {
-      email: "pierre.durand@smart-siem.com",
-      label: "Administrateur",
-      role: "admin" as UserRole,
-    },
-    {
-      email: "marc.lemaire@smart-siem.com",
-      label: "RSSI",
-      role: "reader" as UserRole,
-    },
-  ];
-
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
 
     if (!email) {
-      setError("Veuillez saisir votre identifiant (adresse email).");
-      return;
-    }
-
-    // Simple email validation
-    const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailPattern.test(email)) {
-      setError(
-        "Veuillez saisir une adresse email valide (ex: nom.prenom@entreprise.com).",
-      );
+      setError("Veuillez saisir votre nom d'utilisateur.");
       return;
     }
 
@@ -86,16 +58,6 @@ export default function LoginView({
     if (password.length < 4) {
       setError("Le mot de passe doit contenir au moins 4 caractères.");
       return;
-    }
-
-    // Determine role based on email keyword or fallback to analyst
-    let assignedRole: UserRole = "analyst";
-    if (email.includes("admin") || email.includes("pierre")) {
-      assignedRole = "admin";
-    } else if (email.includes("rssi") || email.includes("marc")) {
-      assignedRole = "reader";
-    } else if (email.includes("audit") || email.includes("externe")) {
-      assignedRole = "reader";
     }
 
     // Trigger sequential visual security steps to simulate real enterprise MFA SIEM login
@@ -130,13 +92,6 @@ export default function LoginView({
           err.message || "Échec de la connexion à la passerelle REST API.",
         );
       });
-  };
-
-  const handleQuickFill = (profile: (typeof quickProfiles)[0]) => {
-    setEmail(profile.email);
-    setPassword("•••••••••••••");
-    setTotpCode("");
-    setError("");
   };
 
   return (
@@ -213,10 +168,10 @@ export default function LoginView({
                   <span>Identifiant</span>
                 </label>
                 <input
-                  type="email"
+                  type="text"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  placeholder="nom.prenom@entreprise.com"
+                  placeholder="Nom d'utilisateur"
                   className="w-full rounded-lg border border-slate-800 hover:border-slate-700 bg-slate-950/80 px-3.5 py-2 text-xs text-white placeholder:text-slate-600 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20 transition-all duration-200 font-mono focus:shadow-[0_0_12px_rgba(59,130,246,0.15)]"
                 />
               </div>
@@ -330,25 +285,6 @@ export default function LoginView({
           </div>
         </div>
 
-        {/* Quick Simulation Credentials */}
-        {!isLoading && (
-          <div className="w-full mt-4 p-3 rounded-xl border border-slate-800/40 bg-slate-950/40 text-center space-y-2 hover:border-slate-800 transition-all duration-200">
-            <p className="text-[10px] font-mono text-slate-500 uppercase tracking-wider">
-              Accès de démonstration rapide (RBAC)
-            </p>
-            <div className="flex flex-wrap gap-1.5 justify-center">
-              {quickProfiles.map((p, idx) => (
-                <button
-                  key={idx}
-                  onClick={() => handleQuickFill(p)}
-                  className="text-[9px] font-mono px-2 py-1 rounded bg-slate-900 border border-slate-800/80 text-slate-400 hover:text-blue-400 hover:border-blue-500 hover:bg-blue-500/10 hover:scale-105 active:scale-95 transition-all duration-200 cursor-pointer"
-                >
-                  {p.label}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
       </main>
 
       {/* Footer bar - Absolutely Positioned at Bottom */}

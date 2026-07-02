@@ -4,8 +4,6 @@ import {
   Terminal,
   Server,
   Activity,
-  UserCheck,
-  TrendingUp,
   AlertTriangle,
   ArrowRight,
   ShieldCheck,
@@ -29,28 +27,32 @@ import type {
   EndpointAgent,
   UebaProfile,
 } from "../../types";
+import type { DashboardSummary } from "../../Services/dashboardService";
 
 export default function DashboardView() {
   const [logs, setLogs] = useState<LogEvent[]>([]);
   const [incidents, setIncidents] = useState<Incident[]>([]);
   const [agents, setAgents] = useState<EndpointAgent[]>([]);
   const [profiles, setProfiles] = useState<UebaProfile[]>([]);
+  const [summary, setSummary] = useState<DashboardSummary | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     async function fetchData() {
       try {
-        const [logsRes, incidentsRes, agentsRes, profilesRes] =
+        const [logsRes, incidentsRes, agentsRes, profilesRes, summaryRes] =
           await Promise.all([
             api.getLogs(),
             api.getIncidents(),
             api.getAgents(),
             api.getUebaProfiles(),
+            api.getDashboardSummary(),
           ]);
         setLogs(logsRes);
         setIncidents(incidentsRes);
         setAgents(agentsRes);
         setProfiles(profilesRes);
+        setSummary(summaryRes);
       } catch (err) {
         console.error("Erreur chargement dashboard data", err);
       } finally {
@@ -71,11 +73,15 @@ export default function DashboardView() {
     );
   }
 
-  // Statistics calculation
-  const totalLogs = logs.length;
-  const totalIncidents = incidents.length;
+  const totalLogs = summary?.total_logs_24h ?? logs.length;
   const activeIncidents = incidents.filter((i) => i.status !== "closed").length;
+  const openAlerts = summary?.total_alerts_open ?? activeIncidents;
+  const criticalAlerts =
+    summary?.critical_alerts ??
+    incidents.filter((i) => i.severity === "critical").length;
   const activeAgents = agents.filter((a) => a.status === "ONLINE").length;
+  const agentUptime =
+    agents.length > 0 ? Math.round((activeAgents / agents.length) * 100) : 0;
   const avgRiskScore =
     profiles.length > 0
       ? Math.round(
@@ -84,15 +90,28 @@ export default function DashboardView() {
         )
       : 0;
 
-  // Chart data
-  const activityData = [
-    { time: "14:00", Authentification: 12, Réseau: 85, DNS: 42, Endpoint: 18 },
-    { time: "15:00", Authentification: 19, Réseau: 98, DNS: 38, Endpoint: 24 },
-    { time: "16:00", Authentification: 45, Réseau: 142, DNS: 65, Endpoint: 55 }, // Peak
-    { time: "17:00", Authentification: 22, Réseau: 110, DNS: 50, Endpoint: 30 },
-    { time: "18:00", Authentification: 15, Réseau: 95, DNS: 35, Endpoint: 22 },
-    { time: "19:00", Authentification: 33, Réseau: 160, DNS: 58, Endpoint: 89 }, // Exfiltration time
-  ];
+  const activityData =
+    summary?.log_volume_by_hour?.map((point) => ({
+      time: new Date(point.hour).toLocaleTimeString("fr-FR", {
+        hour: "2-digit",
+        minute: "2-digit",
+      }),
+      Volume: point.count,
+    })) ?? [];
+
+  const alertSeverityData =
+    summary?.alerts_by_level?.map((item) => ({
+      name: item.niveau,
+      count: item.count,
+      fill:
+        item.niveau === "CRITICAL"
+          ? "#ef4444"
+          : item.niveau === "HIGH"
+            ? "#f97316"
+            : item.niveau === "WARNING"
+              ? "#f59e0b"
+              : "#3b82f6",
+    })) ?? [];
 
   const severityData = [
     {
@@ -133,9 +152,8 @@ export default function DashboardView() {
             <h3 className="text-2xl font-bold tracking-tight text-slate-800 dark:text-slate-100 font-mono">
               {totalLogs.toLocaleString()}
             </h3>
-            <p className="text-[10px] text-emerald-500 font-bold flex items-center gap-1">
-              <TrendingUp className="w-3 h-3" />
-              <span>+12.4% vs dernière heure</span>
+            <p className="text-[10px] text-slate-400 dark:text-slate-500 font-medium">
+              Dernières 24 heures
             </p>
           </div>
           <div className="w-12 h-12 rounded-xl bg-blue-500/10 text-blue-500 flex items-center justify-center shrink-0">
@@ -150,14 +168,11 @@ export default function DashboardView() {
               Alertes actives
             </span>
             <h3 className="text-2xl font-bold tracking-tight text-slate-800 dark:text-slate-100 font-mono">
-              {activeIncidents} / {totalIncidents}
+              {openAlerts}
             </h3>
             <p className="text-[10px] text-rose-500 font-bold flex items-center gap-1">
               <AlertTriangle className="w-3 h-3" />
-              <span>
-                {incidents.filter((i) => i.severity === "critical").length}{" "}
-                Alertes critiques
-              </span>
+              <span>{criticalAlerts} alertes critiques</span>
             </p>
           </div>
           <div className="w-12 h-12 rounded-xl bg-red-500/10 text-red-500 flex items-center justify-center shrink-0">
@@ -175,7 +190,7 @@ export default function DashboardView() {
               {activeAgents} / {agents.length}
             </h3>
             <p className="text-[10px] text-slate-400 dark:text-slate-500 font-medium">
-              Uptime global EDR : 99.8%
+              Disponibilité agents : {agentUptime}%
             </p>
           </div>
           <div className="w-12 h-12 rounded-xl bg-emerald-500/10 text-emerald-500 flex items-center justify-center shrink-0">
@@ -256,32 +271,10 @@ export default function DashboardView() {
                 <Legend />
                 <Area
                   type="monotone"
-                  dataKey="Réseau"
+                  dataKey="Volume"
                   stroke="#3b82f6"
                   fillOpacity={1}
                   fill="url(#colorNet)"
-                  strokeWidth={2}
-                />
-                <Area
-                  type="monotone"
-                  dataKey="Endpoint"
-                  stroke="#ef4444"
-                  fillOpacity={1}
-                  fill="url(#colorEnd)"
-                  strokeWidth={2}
-                />
-                <Area
-                  type="monotone"
-                  dataKey="DNS"
-                  stroke="#10b981"
-                  fillOpacity={0}
-                  strokeWidth={2}
-                />
-                <Area
-                  type="monotone"
-                  dataKey="Authentification"
-                  stroke="#f59e0b"
-                  fillOpacity={0}
                   strokeWidth={2}
                 />
               </AreaChart>
@@ -302,7 +295,7 @@ export default function DashboardView() {
           <div className="h-72 w-full font-mono text-xs">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart
-                data={severityData}
+                data={alertSeverityData.length > 0 ? alertSeverityData : severityData}
                 layout="vertical"
                 margin={{ top: 10, right: 10, left: -10, bottom: 5 }}
               >

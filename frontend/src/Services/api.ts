@@ -13,6 +13,7 @@ import { UebaService } from "./uebaService";
 import { ReportService } from "./reportService";
 import { UserService } from "./userService";
 import { AuditLogService } from "./auditLogService";
+import { DashboardService } from "./dashboardService";
 
 // Create instances of all services
 const authService = new AuthService();
@@ -29,6 +30,7 @@ const uebaService = new UebaService();
 const reportService = new ReportService();
 const userService = new UserService();
 const auditLogService = new AuditLogService();
+const dashboardService = new DashboardService();
 
 // Export a unified API object
 export const api = {
@@ -106,6 +108,9 @@ export const api = {
 
   // Audit Logs
   getAuditLogs: auditLogService.getAuditLogs.bind(auditLogService),
+
+  // Dashboard
+  getDashboardSummary: dashboardService.getSummary.bind(dashboardService),
 };
 
 // Default export for backward compatibility
