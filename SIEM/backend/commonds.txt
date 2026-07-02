@@ -1,0 +1,6 @@
+--  FASTAPI COMMANDE --
+
+alembic revision --autogenerate -m "message" // Commande permettant de charger la migration : python manage.py makemigrations
+alembic upgrade head // Commande permettant de charger une migration : python manage.py migrate
+alembic history // Commande permettant d'observer les migrations : python manage.py showmigrations
+alembic downgrade <revision> // Commande permettant de supprimer toutes les migrations d'une application ou éléments : python manage.py migrate app zero
