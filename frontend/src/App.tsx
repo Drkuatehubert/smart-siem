@@ -38,7 +38,10 @@ export default function App() {
   const [userEmail, setUserEmail] = useState<string>(() => {
     return localStorage.getItem('siem_email') || '';
   });
-  const [isDarkMode, setIsDarkMode] = useState<boolean>(true);
+  const [isDarkMode, setIsDarkMode] = useState<boolean>(() => {
+    const saved = localStorage.getItem('siem_theme');
+    return saved !== null ? saved === 'dark' : true;
+  });
 
   // Sync theme class on <html> element for Tailwind dark utility modes
   useEffect(() => {
@@ -81,7 +84,11 @@ export default function App() {
   }, []);
 
   const toggleTheme = () => {
-    setIsDarkMode(!isDarkMode);
+    setIsDarkMode(prev => {
+      const next = !prev;
+      localStorage.setItem('siem_theme', next ? 'dark' : 'light');
+      return next;
+    });
   };
 
   const handleLoginSuccess = (role: UserRole, email: string, keepSession: boolean) => {

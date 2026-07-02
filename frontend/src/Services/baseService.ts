@@ -34,7 +34,7 @@ export abstract class BaseService {
       action,
       target,
       status,
-      ip_address: '192.168.1.50'
+      ip_address: ''
     };
     logs.unshift(newLog);
     return logs;

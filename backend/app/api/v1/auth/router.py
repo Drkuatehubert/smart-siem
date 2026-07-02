@@ -1,19 +1,19 @@
-﻿"""
-router.py â€” Endpoints d'authentification (durcis)
+"""
+router.py — Endpoints d'authentification (durcis)
 
-Responsable : Chef de Projet & SÃ©curitÃ©
+Responsable : Chef de Projet & Sécurité
 Exigences : RF-SEC-01, RF-SEC-03 (audit), NFR-SEC-04 (lockout, MFA, password reset)
 
 Endpoints :
-  POST /auth/login           â€” login (rate-limited)
-  GET  /auth/me              â€” profil courant (JWT, is_active revÃ©rifiÃ© en ES)
-  POST /auth/logout          â€” rÃ©voque le jti (logout serveur-side)
-  POST /auth/refresh         â€” rotate access token via refresh token
-  POST /auth/mfa/setup       â€” gÃ©nÃ¨re le secret TOTP et l'URI otpauth://
-  POST /auth/mfa/verify      â€” complÃ¨te un login MFA
-  POST /auth/password/change â€” change le mot de passe (politique + historique)
-  POST /auth/password/reset-request   â€” envoie un email avec token (Redis 30 min)
-  POST /auth/password/reset-confirm   â€” consomme le token et applique le nouveau mdp
+  POST /auth/login           — login (rate-limited)
+  GET  /auth/me              — profil courant (JWT, is_active revérifié en ES)
+  POST /auth/logout          — révoque le jti (logout serveur-side)
+  POST /auth/refresh         — rotate access token via refresh token
+  POST /auth/mfa/setup       — génère le secret TOTP et l'URI otpauth://
+  POST /auth/mfa/verify      — complète un login MFA
+  POST /auth/password/change — change le mot de passe (politique + historique)
+  POST /auth/password/reset-request   — envoie un email avec token (Redis 30 min)
+  POST /auth/password/reset-confirm   — consomme le token et applique le nouveau mdp
 """
 
 from __future__ import annotations
@@ -51,14 +51,14 @@ from app.api.v1.auth.service import (
     refresh_user_token,
     write_audit_log,
 )
-from app.core.rate_limit import limiter  # noqa: F401  (slowapi decorator utilisÃ© ci-dessous)
+from app.core.rate_limit import limiter  # noqa: F401  (slowapi decorator utilisé ci-dessous)
 
 router = APIRouter(prefix="/auth", tags=["Authentification"])
 
 
-# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ─────────────────────────────────────────────────────────────────────────────
 # Helpers
-# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ─────────────────────────────────────────────────────────────────────────────
 
 def _request_meta(request: Request) -> dict:
     return {
@@ -70,9 +70,9 @@ def _request_meta(request: Request) -> dict:
     }
 
 
-# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ─────────────────────────────────────────────────────────────────────────────
 # Login
-# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ─────────────────────────────────────────────────────────────────────────────
 
 @router.post(
     "/login",
@@ -105,45 +105,52 @@ async def login(request: Request, credentials: LoginRequest):
     return token_data
 
 
-# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-# /me â€” profil courant
-# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ─────────────────────────────────────────────────────────────────────────────
+# /me — profil courant
+# ─────────────────────────────────────────────────────────────────────────────
 
 @router.get(
     "/me",
     response_model=UserProfile,
     summary="Profil utilisateur courant",
-    description="Retourne le profil de l'utilisateur connectÃ© (vÃ©rifiÃ© en ES).",
+    description="Retourne le profil de l'utilisateur connecté (vérifié en ES).",
 )
 async def get_me(
     request: Request,
     current_user: dict = Depends(require_validated_user),
 ):
-    es = get_es_client()
-    try:
-        doc = await es.get(index="idx-users", id=current_user["sub"])
-    except Exception:
+    from app.core.postgres import get_pg_pool
+
+    pool = await get_pg_pool()
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow(
+            """SELECT username, email, role, org_scope, is_active, mfa_enabled
+               FROM users WHERE id = $1::uuid""",
+            current_user["sub"],
+        )
+    if row is None:
         raise HTTPException(status_code=401, detail="Utilisateur introuvable")
-    src = doc["_source"]
+    from app.core.rbac import normalize_role
+
     return UserProfile(
         user_id=current_user["sub"],
-        username=src["username"],
-        email=src.get("email"),
-        role=src["role_id"],
-        org_scope=src.get("org_scope"),
-        is_active=bool(src.get("is_active", False)),
-        mfa_enabled=bool(src.get("mfa_enabled", False)),
+        username=row["username"],
+        email=row.get("email"),
+        role=normalize_role(row["role"]),
+        org_scope=row.get("org_scope"),
+        is_active=bool(row.get("is_active", False)),
+        mfa_enabled=bool(row.get("mfa_enabled", False)),
     )
 
 
-# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-# Logout (rÃ©voque le jti cÃ´tÃ© serveur)
-# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ─────────────────────────────────────────────────────────────────────────────
+# Logout (révoque le jti côté serveur)
+# ─────────────────────────────────────────────────────────────────────────────
 
 @router.post(
     "/logout",
-    summary="DÃ©connexion",
-    description="RÃ©voque le token JWT courant et journalise la dÃ©connexion.",
+    summary="Déconnexion",
+    description="Révoque le token JWT courant et journalise la déconnexion.",
 )
 async def logout(
     request: Request,
@@ -167,17 +174,17 @@ async def logout(
         http_path=meta["path"],
         status="success",
     )
-    return {"message": "DÃ©connexion enregistrÃ©e. Token rÃ©voquÃ©."}
+    return {"message": "Déconnexion enregistrée. Token révoqué."}
 
 
-# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ─────────────────────────────────────────────────────────────────────────────
 # Refresh
-# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ─────────────────────────────────────────────────────────────────────────────
 
 @router.post(
     "/refresh",
     response_model=RefreshResponse,
-    summary="Renouvelle un access token Ã  partir d'un refresh token",
+    summary="Renouvelle un access token à partir d'un refresh token",
 )
 @limiter.limit("20/minute")
 async def refresh(request: Request, body: RefreshRequest):
@@ -192,15 +199,15 @@ async def refresh(request: Request, body: RefreshRequest):
     return RefreshResponse(**new_tokens)
 
 
-# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ─────────────────────────────────────────────────────────────────────────────
 # MFA setup & verify
-# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ─────────────────────────────────────────────────────────────────────────────
 
 @router.post(
     "/mfa/setup",
     response_model=MfaSetupResponse,
-    summary="GÃ©nÃ¨re un secret TOTP pour MFA",
-    description="Retourne un secret + URI otpauth:// Ã  scanner dans Google Authenticator.",
+    summary="Génère un secret TOTP pour MFA",
+    description="Retourne un secret + URI otpauth:// à scanner dans Google Authenticator.",
 )
 async def mfa_setup(
     request: Request,
@@ -213,7 +220,11 @@ async def mfa_setup(
         id=current_user["sub"],
         doc={"mfa_pending_secret": secret, "mfa_enabled": False},
     )
-    uri = pyotp.TOTP(secret, digits=settings.MFA_TOTP_DIGITS, interval=settings.MFA_TOTP_PERIOD).provisioning_uri(
+    uri = pyotp.TOTP(
+        secret,
+        digits=settings.MFA_TOTP_DIGITS,
+        interval=settings.MFA_TOTP_PERIOD,
+    ).provisioning_uri(
         name=current_user["username"],
         issuer_name=settings.MFA_ISSUER,
     )
@@ -232,7 +243,7 @@ async def mfa_setup(
 @router.post(
     "/mfa/verify",
     response_model=TokenWithProfile,
-    summary="VÃ©rifie le code TOTP et complÃ¨te le login MFA",
+    summary="Vérifie le code TOTP et complète le login MFA",
 )
 @limiter.limit("10/minute")
 async def mfa_verify(request: Request, body: MfaVerifyRequest):
@@ -275,13 +286,13 @@ async def mfa_verify(request: Request, body: MfaVerifyRequest):
     return await create_user_token({**src, "id": user_id})
 
 
-# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ─────────────────────────────────────────────────────────────────────────────
 # Password change / reset
-# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ─────────────────────────────────────────────────────────────────────────────
 
 @router.post(
     "/password/change",
-    summary="Changement de mot de passe (authentifiÃ©)",
+    summary="Changement de mot de passe (authentifié)",
 )
 async def password_change(
     request: Request,
@@ -302,12 +313,11 @@ async def password_change(
         )
         raise HTTPException(status_code=401, detail="Mot de passe actuel incorrect")
 
-    # Politique + historique
     new_hash = hash_password(body.new_password)
     history: list = src.get("password_history", [])
     for h in history[-settings.PASSWORD_HISTORY_SIZE:]:
         if verify_password(body.new_password, h):
-            raise HTTPException(status_code=400, detail="Mot de passe dÃ©jÃ  utilisÃ© rÃ©cemment")
+            raise HTTPException(status_code=400, detail="Mot de passe déjà utilisé récemment")
 
     history.append(new_hash)
     history = history[-settings.PASSWORD_HISTORY_SIZE:]
@@ -327,18 +337,17 @@ async def password_change(
         request_id=getattr(request.state, "request_id", None),
         status="success",
     )
-    return {"message": "Mot de passe mis Ã  jour."}
+    return {"message": "Mot de passe mis à jour."}
 
 
 @router.post(
     "/password/reset-request",
-    summary="Demande de rÃ©initialisation de mot de passe (public, sans fuite d'info)",
+    summary="Demande de réinitialisation de mot de passe (public, sans fuite d'info)",
 )
 @limiter.limit("5/minute")
 async def password_reset_request(request: Request, body: PasswordResetRequest):
-    """
-    RÃ©ponse constante (200 dans tous les cas) pour Ã©viter l'Ã©numÃ©ration.
-    Le mail n'est envoyÃ© que si l'utilisateur existe.
+    """Réponse constante (200 dans tous les cas) pour éviter l'énumération.
+    Le mail n'est envoyé que si l'utilisateur existe.
     """
     meta = _request_meta(request)
     es = get_es_client()
@@ -356,7 +365,6 @@ async def password_reset_request(request: Request, body: PasswordResetRequest):
         token = secrets.token_urlsafe(32)
         r = get_redis_client()
         await r.set(f"pwd_reset:{token}", hits[0]["_id"], ex=1800)  # 30 min
-        # En prod, brancher SMTP ici. En dev, on log seulement.
         import logging
         logging.getLogger("auth").info(
             "[DEV] reset token=%s user_id=%s", token, hits[0]["_id"],
@@ -369,7 +377,7 @@ async def password_reset_request(request: Request, body: PasswordResetRequest):
             request_id=meta["request_id"],
         )
 
-    return {"message": "Si le compte existe, un email a Ã©tÃ© envoyÃ©."}
+    return {"message": "Si le compte existe, un email a été envoyé."}
 
 
 @router.post(
@@ -382,7 +390,7 @@ async def password_reset_confirm(request: Request, body: PasswordResetConfirm):
     r = get_redis_client()
     user_id = await r.get(f"pwd_reset:{body.reset_token}")
     if not user_id:
-        raise HTTPException(status_code=400, detail="Token invalide ou expirÃ©")
+        raise HTTPException(status_code=400, detail="Token invalide ou expiré")
     new_hash = hash_password(body.new_password)
     es = get_es_client()
     doc = await es.get(index="idx-users", id=user_id)
@@ -406,4 +414,4 @@ async def password_reset_confirm(request: Request, body: PasswordResetConfirm):
         ip_address=request.client.host if request.client else None,
         request_id=getattr(request.state, "request_id", None),
     )
-    return {"message": "Mot de passe rÃ©initialisÃ©."}
+    return {"message": "Mot de passe réinitialisé."}

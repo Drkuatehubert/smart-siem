@@ -45,48 +45,55 @@ def _sanitize(doc: Dict[str, Any]) -> Dict[str, Any]:
 async def list_users(page: int = 1, size: int = 50) -> Dict[str, Any]:
     """Liste paginÃ©e des utilisateurs. `size` bornÃ©e Ã  500."""
     size = max(1, min(size, 500))
-    es = get_es_client()
-    res = await es.search(
-        index=IDX,
-        query={"match_all": {}},
-        from_=(page - 1) * size,
-        size=size,
-        _source={"excludes": list(_SENSITIVE)},
-        sort=[{"created_at": {"order": "desc"}}],
-    )
+    from app.core.postgres import get_pg_pool
+    from app.core.pg_utils import serialize_row
+
+    offset = (page - 1) * size
+    pool = await get_pg_pool()
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(
+            """SELECT id, username, email, role, mfa_enabled, org_scope, is_active,
+                      last_login_at, failed_login_count, locked_until, created_at, created_by
+               FROM users
+               ORDER BY created_at DESC NULLS LAST
+               LIMIT $1 OFFSET $2""",
+            size,
+            offset,
+        )
+        total = await conn.fetchval("SELECT COUNT(*) FROM users")
     return {
-        "total": res["hits"]["total"]["value"],
+        "total": total,
         "page": page,
         "size": size,
-        "results": [
-            {"id": h["_id"], **_sanitize(dict(h["_source"]))} for h in res["hits"]["hits"]
-        ],
+        "results": [serialize_row(r) for r in rows],
     }
 
 
 async def get_user_by_id(user_id: str) -> Optional[Dict[str, Any]]:
-    es = get_es_client()
-    try:
-        doc = await es.get(index=IDX, id=user_id)
-        return {"id": doc["_id"], **_sanitize(dict(doc["_source"]))}
-    except Exception:
-        return None
+    from app.core.postgres import get_pg_pool
+    from app.core.pg_utils import serialize_row
+
+    pool = await get_pg_pool()
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow(
+            """SELECT id, username, email, role, mfa_enabled, org_scope, is_active,
+                      last_login_at, failed_login_count, locked_until, created_at, created_by
+               FROM users WHERE id = $1::uuid""",
+            user_id,
+        )
+    return serialize_row(row) if row else None
 
 
 async def count_active_admins() -> int:
-    es = get_es_client()
-    res = await es.count(
-        index=IDX,
-        query={
-            "bool": {
-                "must": [
-                    {"term": {"role_id": Role.ADMINISTRATEUR}},
-                    {"term": {"is_active": True}},
-                ]
-            }
-        },
-    )
-    return res["count"]
+    from app.core.postgres import get_pg_pool
+
+    pool = await get_pg_pool()
+    async with pool.acquire() as conn:
+        return await conn.fetchval(
+            """SELECT COUNT(*) FROM users
+               WHERE is_active = true
+                 AND LOWER(role) IN ('admin', 'administrateur')"""
+        )
 
 
 # â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€

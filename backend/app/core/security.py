@@ -297,61 +297,76 @@ async def require_validated_user(
     token: str = Depends(oauth2_scheme),
 ) -> Dict[str, Any]:
     """
-    DÃ©pendance stricte : vÃ©rifie en plus en ES que :
+    Dépendance stricte : revérifie l'utilisateur en PostgreSQL :
       * l'utilisateur existe ;
-      * `is_active == true` (compte non dÃ©sactivÃ©) ;
-      * le rÃ´le du token correspond toujours au rÃ´le courant (anti-privilege-escalation).
+      * `is_active == true` ;
+      * le rôle du token correspond au rôle courant (anti-privilege-escalation).
 
-    Cache Redis 30 s pour Ã©viter de marteler ES.
+    Cache Redis 30 s pour éviter de marteler la base.
     """
+    from app.core.postgres import get_pg_pool
+    from app.core.rbac import normalize_role
+    import json as _json
+
     payload = decode_access_token(token)
     user_id = payload.get("sub")
     if not user_id:
         raise _401()
 
+    token_role = normalize_role(payload.get("role"))
+
     # Cache
     try:
-        import json as _json
         r = _redis_sync()
         cached = r.get(f"validated_user:{user_id}")
         if cached:
             data = _json.loads(cached)
-            if data.get("is_active") and data.get("role") == payload.get("role"):
-                return {**payload, "_validated": True}
+            if data.get("is_active") and data.get("role") == token_role:
+                return {**payload, "role": token_role, "_validated": True}
     except Exception:
         pass
 
-    # Re-vÃ©rification en ES
-    from app.core.elasticsearch import get_es_client  # import local pour Ã©viter cycle
-    es = get_es_client()
+    pool = await get_pg_pool()
     try:
-        doc = await es.get(index="idx-users", id=user_id)
+        async with pool.acquire() as conn:
+            row = await conn.fetchrow(
+                """SELECT id, role, is_active, org_scope
+                   FROM users WHERE id = $1::uuid""",
+                user_id,
+            )
     except Exception:
         raise _401("Utilisateur introuvable")
 
-    src = doc["_source"]
-    if not src.get("is_active", False):
-        raise _401("Compte dÃ©sactivÃ©")
-    if src.get("role_id") != payload.get("role"):
-        # RÃ´le modifiÃ© : on force la dÃ©connexion de l'ancienne session
+    if row is None:
+        raise _401("Utilisateur introuvable")
+
+    if not row["is_active"]:
+        raise _401("Compte désactivé")
+
+    db_role = normalize_role(row["role"])
+    if db_role != token_role:
         try:
             revoke_jti(payload["jti"], datetime.fromtimestamp(payload["exp"], tz=timezone.utc))
         except Exception:
             pass
-        raise _401("Droits modifiÃ©s, veuillez vous reconnecter")
+        raise _401("Droits modifiés, veuillez vous reconnecter")
 
-    # Mise en cache
     try:
         r = _redis_sync()
         r.set(
             f"validated_user:{user_id}",
-            _json.dumps({"is_active": True, "role": src.get("role_id")}),
+            _json.dumps({"is_active": True, "role": db_role}),
             ex=30,
         )
     except Exception:
         pass
 
-    return {**payload, "_validated": True, "org_scope": src.get("org_scope") or payload.get("org_scope")}
+    return {
+        **payload,
+        "role": db_role,
+        "_validated": True,
+        "org_scope": row["org_scope"] or payload.get("org_scope"),
+    }
 
 
 def new_csrf_token() -> str:

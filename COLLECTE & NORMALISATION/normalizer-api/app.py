@@ -158,11 +158,11 @@ def extraire_action(message: str) -> Optional[str]:
 
     # ── SSH / Auth ────────────────────────────────────────────────────────────
     if "invalid user" in msg:
-        return "invalid_user"
+        return "login_failed"
     if "failed password" in msg or "authentication failure" in msg:
-        return "ssh_auth_failure"
+        return "login_failed"
     if "accepted password" in msg or "accepted publickey" in msg:
-        return "ssh_auth_success"
+        return "login_success"
     if "session opened" in msg:
         return "session_opened"
     if "session closed" in msg:
@@ -192,7 +192,7 @@ def extraire_action(message: str) -> Optional[str]:
 
     # ── Windows EventIDs ──────────────────────────────────────────────────────
     if "eventid 4625" in msg or "échec de connexion" in msg:
-        return "ssh_auth_failure"
+        return "login_failed"
     if "eventid 4624" in msg or "connexion réussie" in msg:
         m = re.search(r'0x3e7\s*\|\s*(\d+)\s*\|', message)
         if m:
@@ -200,12 +200,12 @@ def extraire_action(message: str) -> Optional[str]:
             if logon_type == "10":
                 return "rdp_connection"
             if logon_type == "3":
-                return "network_logon"
+                return "login_success"
             if logon_type == "2":
-                return "interactive_logon"
+                return "login_success"
             if logon_type == "5":
-                return "service_logon"
-        return "ssh_auth_success"
+                return "login_success"
+        return "login_success"
     if "eventid 4648" in msg:
         return "privilege_escalation"
     if "eventid 4740" in msg or "compte verrouillé" in msg:
@@ -259,8 +259,10 @@ def extraire_action(message: str) -> Optional[str]:
 def envoyer_vers_es(log_normalise: dict):
     """Indexe le log normalisé dans Elasticsearch."""
     try:
+        mois_courant = datetime.now(timezone.utc).strftime("%Y.%m")
+        index_name = f"siem-logs-{mois_courant}"
         es.index(
-            index="idx-logs",
+            index=index_name,
             document={
                 "@timestamp":   log_normalise["horodatage"],
                 "raw_log_id":   log_normalise["id_es"],

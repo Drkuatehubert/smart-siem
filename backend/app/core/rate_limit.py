@@ -34,6 +34,6 @@ limiter = Limiter(
     key_func=_key_func,
     storage_uri=settings.RATE_LIMIT_STORAGE_URI,
     default_limits=[settings.RATE_LIMIT_DEFAULT],
-    headers_enabled=True,
+    headers_enabled=False,
     strategy="fixed-window",
 )

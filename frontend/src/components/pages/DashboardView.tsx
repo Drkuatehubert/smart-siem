@@ -7,6 +7,7 @@ import {
   AlertTriangle,
   ArrowRight,
   ShieldCheck,
+  UserCheck,
 } from "lucide-react";
 import {
   AreaChart,

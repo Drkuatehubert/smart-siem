@@ -16,6 +16,7 @@ networks:
 volumes:
   redisdata:
   reports:
+  pgdata:
 
 services:
 
@@ -63,6 +64,29 @@ services:
       retries: 5
     restart: unless-stopped
 
+  # ── Base de données PostgreSQL (moteur de corrélation) ──────────────────────
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: siem-postgres
+    environment:
+      POSTGRES_DB: nafeh
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: felicia
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./temp-data/bd_schema/01_postgres_schema.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    ports:
+      - "5432:5432"
+    networks:
+      - siem-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
   # ── Collecte & Normalisation ─────────────────────────────────────────────────
 
   normalizer:
@@ -87,12 +111,16 @@ services:
   backend:
     build: ./backend
     container_name: siem-backend
-    env_file: .env
     environment:
       - ELASTICSEARCH_HOST=${ELASTICSEARCH_HOST}
+      - ELASTICSEARCH_USERNAME=${ELASTICSEARCH_USERNAME}
+      - ELASTICSEARCH_PASSWORD=${ELASTICSEARCH_PASSWORD}
+      - ELASTICSEARCH_TLS_VERIFY=false
       - REDIS_HOST=redis
       - REDIS_PORT=6379
       - REDIS_TLS=false
+      - RATE_LIMIT_STORAGE_URI=redis://redis:6379/1
+      - PG_DSN=postgresql://postgres:felicia@postgres:5432/nafeh
     ports:
       - "8000:8000"
     networks:
@@ -100,18 +128,32 @@ services:
     depends_on:
       redis:
         condition: service_healthy
+      postgres:
+        condition: service_healthy
     restart: unless-stopped
 
-  # ── Corrélation MITRE ATT&CK ─────────────────────────────────────────────────
+  # ── Moteur de corrélation MITRE ATT&CK ───────────────────────────────────────
+  # context : temp-data/ (contient correlation_engine_2.py + requirements.txt)
+  # dockerfile : ../correlation/Dockerfile (relatif au context)
 
   correlation:
-    build: ./correlation
+    build:
+      context: ./temp-data
+      dockerfile: ../correlation/Dockerfile
     container_name: siem-correlation
     env_file: .env
     environment:
-      - ELASTICSEARCH_HOST=${ELASTICSEARCH_HOST}
+      - ES_HOST=${ELASTICSEARCH_HOST}
+      - ES_USER=${ELASTICSEARCH_USERNAME}
+      - ES_PASSWORD=${ELASTICSEARCH_PASSWORD}
+      - PG_DSN=postgresql://postgres:felicia@postgres:5432/nafeh
     networks:
       - siem-network
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     restart: unless-stopped
 
   # ── SOAR Worker ───────────────────────────────────────────────────────────────

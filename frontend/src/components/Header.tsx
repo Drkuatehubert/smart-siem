@@ -313,14 +313,10 @@ export default function Header({
           </div>
           <div className="hidden md:block">
             <h4 className="text-xs font-semibold text-slate-800 dark:text-slate-200">
-              {activeRole === "admin"
-                ? "Pierre Durand"
-                : activeRole === "analyst"
-                  ? "Jean Dupont"
-                  : "Auditeur Externe"}
+              {localStorage.getItem('siem_username') || localStorage.getItem('siem_email') || activeRole}
             </h4>
-            <p className="text-[9px] font-mono text-slate-400 tracking-wider">
-              IP: 192.168.1.50
+            <p className="text-[9px] font-mono text-slate-400 tracking-wider uppercase">
+              {activeRole}
             </p>
           </div>
         </div>

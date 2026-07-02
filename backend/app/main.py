@@ -1,17 +1,17 @@
-﻿"""
-main.py â€” Point d'entrÃ©e FastAPI (durci)
+"""
+main.py — Point d'entrée FastAPI (durci)
 
-Responsable : Chef de Projet & SÃ©curitÃ©
-Exigences : NFR-SEC-05 (CORS strict, headers sÃ©curitÃ©), NFR-SEC-01 (CORS+jwt)
+Responsable : Chef de Projet & Sécurité
+Exigences : NFR-SEC-05 (CORS strict, headers sécurité), NFR-SEC-01 (CORS+jwt)
 
-Middlewares appliquÃ©s (du plus extÃ©rieur au plus intÃ©rieur) :
-  1. SecurityHeadersMiddleware â€” HSTS, X-Frame-Options, CSP, etc.
-  2. RequestIdMiddleware â€” gÃ©nÃ¨re / propage un X-Request-Id
-  3. CORSMiddleware â€” origins explicites, pas de wildcard
-  4. (slowapi) â€” rate limit sur endpoints sensibles
+Middlewares appliqués (du plus extérieur au plus intérieur) :
+  1. SecurityHeadersMiddleware — HSTS, X-Frame-Options, CSP, etc.
+  2. RequestIdMiddleware — génère / propage un X-Request-Id
+  3. CORSMiddleware — origins explicites, pas de wildcard
+  4. (slowapi) — rate limit sur endpoints sensibles
 
 Endpoints :
-  GET  /health              â€” healthcheck enrichi (ES ping)
+  GET  /health              — healthcheck enrichi (ES ping)
 """
 
 from __future__ import annotations
@@ -41,12 +41,12 @@ from app.api.v1.router import api_router
 logger = logging.getLogger("main")
 
 
-# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ─────────────────────────────────────────────────────────────────────────────
 # Middlewares
-# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ─────────────────────────────────────────────────────────────────────────────
 
 class SecurityHeadersMiddleware:
-    """Ajoute les en-tÃªtes de sÃ©curitÃ© Ã  chaque rÃ©ponse."""
+    """Ajoute les en-têtes de sécurité à chaque réponse."""
 
     def __init__(self, app):
         self.app = app
@@ -75,7 +75,7 @@ class SecurityHeadersMiddleware:
 
 
 class RequestIdMiddleware:
-    """GÃ©nÃ¨re ou propage un `X-Request-Id` et l'expose via `request.state.request_id`."""
+    """Génère ou propage un `X-Request-Id` et l'expose via `request.state.request_id`."""
 
     def __init__(self, app):
         self.app = app
@@ -85,7 +85,7 @@ class RequestIdMiddleware:
             await self.app(scope, receive, send)
             return
 
-        # RÃ©cupÃ¨re l'ID entrant ou en gÃ©nÃ¨re un nouveau
+        # Récupère l'ID entrant ou en génère un nouveau
         headers = dict(scope.get("headers") or [])
         rid = headers.get(b"x-request-id", b"").decode("latin-1") or uuid.uuid4().hex
         scope["state"] = scope.get("state", {})
@@ -111,32 +111,36 @@ class RequestIdMiddleware:
             )
 
 
-# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ─────────────────────────────────────────────────────────────────────────────
 # Lifespan
-# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ─────────────────────────────────────────────────────────────────────────────
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """DÃ©marrage / arrÃªt propre : ferme ES et Redis."""
+    """Démarrage / arrêt propre : ferme ES, Redis et PostgreSQL."""
     logger.info("Smart SIEM API starting (env=%s)", settings.APP_ENV)
+    from app.core.postgres import close_pg_pool, ensure_admin_user, get_pg_pool
+    await get_pg_pool()
+    await ensure_admin_user()
     yield
     await close_es_client()
     await close_redis_client()
+    await close_pg_pool()
     logger.info("Smart SIEM API stopped")
 
 
-# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ─────────────────────────────────────────────────────────────────────────────
 # Application
-# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ─────────────────────────────────────────────────────────────────────────────
 
-# En prod, on coupe la doc OpenAPI (fuite de schÃ©ma)
+# En prod, on coupe la doc OpenAPI (fuite de schéma)
 _docs_kwargs = {}
 if settings.APP_ENV == "prod" or not settings.DOCS_ENABLED:
     _docs_kwargs = {"docs_url": None, "redoc_url": None, "openapi_url": None}
 
 app = FastAPI(
     title="Smart SIEM API",
-    description="API REST du systÃ¨me de gestion et d'analyse des Ã©vÃ©nements de sÃ©curitÃ©",
+    description="API REST du système de gestion et d'analyse des événements de sécurité",
     version="1.0.0",
     lifespan=lifespan,
     **_docs_kwargs,
@@ -145,16 +149,21 @@ app = FastAPI(
 # Rate limiter
 app.state.limiter = limiter
 
-# Middlewares (l'ordre est important : extÃ©rieur en dernier via `add_middleware`)
+# Middlewares (l'ordre est important : extérieur en dernier via `add_middleware`)
 app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(RequestIdMiddleware)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.CORS_ORIGINS,
-    allow_credentials=False,  # API sur Bearer, pas de cookies
-    allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
-    allow_headers=["Authorization", "Content-Type", "X-Request-Id"],
-    max_age=600,
+    allow_origins=[
+        "http://localhost:5173",
+        "http://localhost:5176",
+        "http://localhost:3000",
+        "http://127.0.0.1:5173",
+        "http://127.0.0.1:5176",
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 # Gestionnaires d'erreurs
@@ -163,17 +172,17 @@ app.add_exception_handler(RequestValidationError, validation_exception_handler)
 app.add_exception_handler(RateLimitExceeded, rate_limit_exceeded_handler)
 app.add_exception_handler(Exception, generic_exception_handler)
 
-# Router agrÃ©gateur (corrige le code mort de la version prÃ©cÃ©dente)
+# Router agrégateur
 app.include_router(api_router, prefix="/api/v1")
 
 
-# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ─────────────────────────────────────────────────────────────────────────────
 # Endpoints de base
-# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ─────────────────────────────────────────────────────────────────────────────
 
-@app.get("/health", tags=["SantÃ©"])
+@app.get("/health", tags=["Santé"])
 async def health_check():
-    """Endpoint de santÃ© â€” RF-COL-05."""
+    """Endpoint de santé — RF-COL-05."""
     es_ok = await es_ping()
     return {
         "status": "ok",

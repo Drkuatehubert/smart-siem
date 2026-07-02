@@ -1,35 +1,21 @@
-﻿"""
-schemas.py â€” SchÃ©mas Pydantic pour l'authentification (durcis)
-
-Responsable : Chef de Projet & SÃ©curitÃ©
-Exigences : RF-SEC-01, NFR-SEC-03
-
-ModÃ¨les exposÃ©s :
-  * LoginRequest, LoginResponseMfa
-  * TokenResponse, TokenWithProfile
-  * RefreshRequest, RefreshResponse
-  * MfaSetupResponse, MfaVerifyRequest
-  * PasswordChangeRequest, PasswordResetRequest, PasswordResetConfirm
-  * UserProfile
-"""
-
 from __future__ import annotations
 
 import re
-from typing import Literal, Optional
+from typing import Optional
 
 from pydantic import BaseModel, EmailStr, Field, field_validator
 
 
-# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ─────────────────────────────────────────────────────────────────────────────
 # Login
-# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ─────────────────────────────────────────────────────────────────────────────
 
 class LoginRequest(BaseModel):
     """Identifiants soumis par le client. Validation de format seule ;
-    l'authentification rÃ©elle (lockout, audit, etc.) est dans `service.authenticate_user`.
+    l'authentification réelle (lockout, audit, etc.) est dans `service.authenticate_user`.
+    Accepte username ou email (contenant @).
     """
-    username: str = Field(..., min_length=3, max_length=50, pattern=r"^[a-zA-Z0-9._-]+$")
+    username: str = Field(..., min_length=3, max_length=255, pattern=r"^[a-zA-Z0-9._@+%-]+$")
     password: str = Field(..., min_length=1, max_length=4096)  # borne haute anti-DoS
 
     class Config:
@@ -39,7 +25,7 @@ class LoginRequest(BaseModel):
 
 
 class UserProfile(BaseModel):
-    """Profil public de l'utilisateur (jamais de hash, jamais d'email non validÃ©)."""
+    """Profil public de l'utilisateur (jamais de hash, jamais d'email non validé)."""
     user_id: str
     username: str
     email: Optional[EmailStr] = None
@@ -57,7 +43,7 @@ class TokenResponse(BaseModel):
 
 
 class TokenWithProfile(BaseModel):
-    """RÃ©ponse de login. `access_token` peut Ãªtre None si MFA requis (renvoyÃ© en `mfa_token`)."""
+    """Réponse de login. `access_token` peut être None si MFA requis (renvoyé en `mfa_token`)."""
     access_token: Optional[str] = None
     refresh_token: Optional[str] = None
     token_type: str = "bearer"
@@ -68,16 +54,16 @@ class TokenWithProfile(BaseModel):
 
 
 class LoginResponseMfa(BaseModel):
-    """Sous-rÃ©ponse envoyÃ©e quand `MFA_REQUIRED=True`."""
+    """Sous-réponse envoyée quand `MFA_REQUIRED=True`."""
     mfa_required: bool = True
     mfa_token: str
     token_type: str = "mfa"
     user: UserProfile
 
 
-# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ─────────────────────────────────────────────────────────────────────────────
 # Refresh
-# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ─────────────────────────────────────────────────────────────────────────────
 
 class RefreshRequest(BaseModel):
     refresh_token: str = Field(..., min_length=20)
@@ -89,12 +75,12 @@ class RefreshResponse(BaseModel):
     expires_in: int
 
 
-# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ─────────────────────────────────────────────────────────────────────────────
 # MFA
-# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ─────────────────────────────────────────────────────────────────────────────
 
 class MfaSetupResponse(BaseModel):
-    """RÃ©ponse de /auth/mfa/setup. Contient le secret (Ã  encoder cÃ´tÃ© client)
+    """Réponse de /auth/mfa/setup. Contient le secret (à encoder côté client)
     et l'URI otpauth:// pour QR code.
     """
     secret: str
@@ -106,17 +92,17 @@ class MfaVerifyRequest(BaseModel):
     code: str = Field(..., min_length=6, max_length=8, pattern=r"^\d+$")
 
 
-# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ─────────────────────────────────────────────────────────────────────────────
 # Mot de passe
-# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ─────────────────────────────────────────────────────────────────────────────
 
 _PASSWORD_POLICY_HINT = (
-    "12 caractÃ¨res minimum, avec majuscule, minuscule, chiffre et symbole."
+    "12 caractères minimum, avec majuscule, minuscule, chiffre et symbole."
 )
 
 
 def _validate_password_strength(value: str) -> str:
-    """VÃ©rifie la politique (PASSWORD_*). LÃ¨ve ValueError si non conforme."""
+    """Vérifie la politique (PASSWORD_*). Lève ValueError si non conforme."""
     from app.config import settings
     if len(value) < settings.PASSWORD_MIN_LENGTH:
         raise ValueError(f"Mot de passe trop court (min {settings.PASSWORD_MIN_LENGTH}).")
