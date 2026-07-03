@@ -18,8 +18,6 @@ Endpoints :
 
 from __future__ import annotations
 
-import secrets
-from datetime import datetime, timezone
 from typing import Optional
 
 import pyotp  # type: ignore[import-untyped]
@@ -29,17 +27,13 @@ from app.config import settings
 from app.core.security import (
     decode_refresh_token,
     require_validated_user,
-    revoke_jti,
 )
 from app.core.elasticsearch import get_es_client
-from app.core.redis_client import get_redis_client
 from app.api.v1.auth.schemas import (
     LoginRequest,
     MfaSetupResponse,
     MfaVerifyRequest,
     PasswordChangeRequest,
-    PasswordResetConfirm,
-    PasswordResetRequest,
     RefreshRequest,
     RefreshResponse,
     TokenWithProfile,
@@ -61,6 +55,9 @@ router = APIRouter(prefix="/auth", tags=["Authentification"])
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _request_meta(request: Request) -> dict:
+    # Regroupe les informations de contexte de la requête HTTP couramment utilisées
+    # pour l'audit (IP, user-agent, request_id, méthode, chemin), évite de les
+    # récupérer manuellement dans chaque endpoint.
     return {
         "ip": request.client.host if request.client else None,
         "user_agent": request.headers.get("user-agent"),
@@ -80,9 +77,10 @@ def _request_meta(request: Request) -> dict:
     summary="Connexion utilisateur",
     description="Authentifie l'utilisateur et retourne un token JWT (ou un mfa_token si MFA).",
 )
-@limiter.limit(settings.RATE_LIMIT_LOGIN)
 async def login(request: Request, credentials: LoginRequest):
     meta = _request_meta(request)
+    # Toute la logique de vérification (mot de passe, timing constant)
+    # est déléguée à authenticate_user, qui lève une HTTPException en cas d'échec.
     user = await authenticate_user(
         credentials.username,
         credentials.password,
@@ -117,6 +115,8 @@ async def login(request: Request, credentials: LoginRequest):
 )
 async def get_me(
     request: Request,
+    # Depends(require_validated_user) : FastAPI exécute cette dépendance avant la fonction ;
+    # si le JWT est invalide/expiré/révoqué ou le compte désactivé, elle lève 401 automatiquement.
     current_user: dict = Depends(require_validated_user),
 ):
     from app.core.postgres import get_pg_pool
@@ -156,14 +156,9 @@ async def logout(
     request: Request,
     current_user: dict = Depends(require_validated_user),
 ):
+    # Un JWT classique reste valide jusqu'à son expiration même après "déconnexion" côté client
+    # (il suffit de le garder) : aucune révocation côté serveur n'est appliquée ici.
     meta = _request_meta(request)
-    jti = current_user.get("jti")
-    exp = current_user.get("exp")
-    if jti and exp:
-        try:
-            revoke_jti(jti, datetime.fromtimestamp(exp, tz=timezone.utc))
-        except Exception:
-            pass
     await write_audit_log(
         user_id=current_user["sub"],
         action="deconnexion",
@@ -186,8 +181,9 @@ async def logout(
     response_model=RefreshResponse,
     summary="Renouvelle un access token à partir d'un refresh token",
 )
-@limiter.limit("20/minute")
 async def refresh(request: Request, body: RefreshRequest):
+    # decode_refresh_token vérifie signature/expiration/type="refresh" ;
+    # toute anomalie lève directement une HTTPException 401 qu'on laisse remonter.
     try:
         payload = decode_refresh_token(body.refresh_token)
     except HTTPException:
@@ -213,8 +209,13 @@ async def mfa_setup(
     request: Request,
     current_user: dict = Depends(require_validated_user),
 ):
+    # Génère un secret aléatoire propre à cet utilisateur (jamais partagé/codé en dur,
+    # contrairement au module de démo backend/app/auth/).
     secret = pyotp.random_base32()
     es = get_es_client()
+    # Le secret est stocké en "pending" : il ne devient actif (mfa_enabled=True) qu'après
+    # vérification réussie d'un premier code via /mfa/verify (évite qu'un setup abandonné
+    # en cours de route ne verrouille silencieusement le compte).
     await es.update(
         index="idx-users",
         id=current_user["sub"],
@@ -245,9 +246,10 @@ async def mfa_setup(
     response_model=TokenWithProfile,
     summary="Vérifie le code TOTP et complète le login MFA",
 )
-@limiter.limit("10/minute")
 async def mfa_verify(request: Request, body: MfaVerifyRequest):
-    from app.core.security import decode_token  # local
+    from app.core.security import decode_token  # import local, évite un cycle au chargement du module
+    # Le mfa_token a été émis par /login (via create_user_token) quand mfa_enabled=True :
+    # on vérifie ici qu'il est valide et toujours de type "mfa" avant de continuer.
     try:
         payload = decode_token(body.mfa_token, expected_type="mfa")
     except HTTPException:
@@ -258,6 +260,7 @@ async def mfa_verify(request: Request, body: MfaVerifyRequest):
     src = doc["_source"]
     pending = src.get("mfa_pending_secret")
     if not pending:
+        # Cas : mfa_verify appelé sans setup préalable en cours (aucun secret en attente).
         raise HTTPException(status_code=400, detail="Aucun setup MFA en cours")
     totp = pyotp.TOTP(pending, digits=settings.MFA_TOTP_DIGITS, interval=settings.MFA_TOTP_PERIOD)
     if not totp.verify(body.code, valid_window=1):
@@ -270,7 +273,7 @@ async def mfa_verify(request: Request, body: MfaVerifyRequest):
             status="failure",
         )
         raise HTTPException(status_code=401, detail="Code MFA invalide")
-    # Confirme le MFA
+    # Le code est correct : on active définitivement le MFA et on efface le secret "pending".
     await es.update(
         index="idx-users",
         id=user_id,
@@ -283,6 +286,7 @@ async def mfa_verify(request: Request, body: MfaVerifyRequest):
         request_id=getattr(request.state, "request_id", None),
         status="success",
     )
+    # Émet enfin les vrais tokens d'accès (le login est maintenant complet).
     return await create_user_token({**src, "id": user_id})
 
 
@@ -304,6 +308,8 @@ async def password_change(
     doc = await es.get(index="idx-users", id=current_user["sub"])
     src = doc["_source"]
     if not verify_password(body.old_password, src["password_hash"]):
+        # On exige de reconfirmer le mot de passe actuel avant de le changer, pour éviter
+        # qu'une session volée (mais token valide) ne permette de tout changer sans rien connaître.
         await write_audit_log(
             user_id=current_user["sub"],
             action="changement_mdp_echec",
@@ -320,6 +326,8 @@ async def password_change(
             raise HTTPException(status_code=400, detail="Mot de passe déjà utilisé récemment")
 
     history.append(new_hash)
+    # On ne garde que les N derniers hash (PASSWORD_HISTORY_SIZE), pour ne pas faire
+    # grossir indéfiniment le document utilisateur.
     history = history[-settings.PASSWORD_HISTORY_SIZE:]
     await es.update(
         index="idx-users",

@@ -6,7 +6,7 @@ version: "3.9"
 # Usage dev   : docker compose -f docker-compose.yml -f docker-compose.dev.yml up
 #
 # Elasticsearch : instance partagée via ngrok (voir ELASTICSEARCH_HOST dans .env)
-# Redis         : instance locale (nécessaire pour la queue SOAR)
+# PostgreSQL    : instance locale (règles/alertes du moteur de corrélation, voir correlation_engine/)
 # =============================================================================
 
 networks:
@@ -109,6 +109,28 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
+  # Agent de collecte (démo) : normalement déployé directement sur les machines
+  # à surveiller (voir "COLLECTE & NORMALISATION/agent de collecte/agentU.py" et
+  # agentW.py pour Windows). Ici, conteneurisé à titre de démonstration : il tape
+  # sur /var/log de l'hôte (monté en lecture seule) et envoie au normalizer via
+  # le réseau interne docker-compose.
+  agent-collecte:
+    build:
+      context: "./COLLECTE & NORMALISATION/agent de collecte"
+      dockerfile: Dockerfile
+    container_name: siem-agent-collecte
+    environment:
+      - AGENT_API_URL=https://normalizer:443/normalize/batch
+      - AGENT_API_TOKEN=agent-token-ubuntu-01
+      - AGENT_LOG_FILES=/var/log/auth.log,/var/log/syslog
+    volumes:
+      - /var/log:/var/log:ro
+    networks:
+      - siem-network
+    depends_on:
+      - normalizer
+    restart: unless-stopped
+
   # ── Backend FastAPI ───────────────────────────────────────────────────────────
 
   backend:
@@ -173,25 +195,15 @@ services:
     environment:
       - CELERY_BROKER=redis://redis:6379/0
       - ES_HOST=${ELASTICSEARCH_HOST}
+      - ES_USER=${ELASTICSEARCH_USERNAME:-elastic}
+      - ES_PASSWORD=${ELASTICSEARCH_PASSWORD}
+      - PG_DSN=postgresql://postgres:${POSTGRES_PASSWORD:-postgres}@postgres:5432/smartsiem
+      - API_NOTIFY_URL=http://backend:8000/internal/alert-triggered
     networks:
       - siem-network
     depends_on:
-      redis:
+      postgres:
         condition: service_healthy
-    restart: unless-stopped
-
-  # ── Reporting ─────────────────────────────────────────────────────────────────
-
-  reporting:
-    build: ./reporting
-    container_name: siem-reporting
-    env_file: .env
-    environment:
-      - ELASTICSEARCH_HOST=${ELASTICSEARCH_HOST}
-    volumes:
-      - reports:/app/generated_reports
-    networks:
-      - siem-network
     restart: unless-stopped
 
   # ── Frontend React ────────────────────────────────────────────────────────────

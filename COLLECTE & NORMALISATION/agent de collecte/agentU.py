@@ -32,8 +32,10 @@ def get_local_ip() -> str:
 AGENT_PID = os.getpid()
 
 CONFIG = {
-    "api_url":        "https://192.168.100.1:443/normalize/batch",
-    "api_token":      "agent-token-ubuntu-01",
+    # Surchargeable par variable d'environnement : en déploiement docker-compose,
+    # pointe vers le service "normalizer" du réseau interne plutôt qu'une IP fixe.
+    "api_url":        os.environ.get("AGENT_API_URL", "https://192.168.100.1:443/normalize/batch"),
+    "api_token":      os.environ.get("AGENT_API_TOKEN", "agent-token-ubuntu-01"),
     "hostname":       os.uname().nodename,
     "agent_ip":       get_local_ip(),
     "flush_interval": 5,
@@ -42,8 +44,7 @@ CONFIG = {
     "retry_delay":    2,  # Multiplicateur de base pour le Backoff exponentiel
     "registry_file":  "/var/tmp/smart_agent_registry.json",
     "log_files": [
-        "/var/log/auth.log",
-        "/var/log/syslog",
+        p for p in os.environ.get("AGENT_LOG_FILES", "/var/log/auth.log,/var/log/syslog").split(",") if p
     ]
 }
 

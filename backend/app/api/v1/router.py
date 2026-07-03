@@ -1,4 +1,7 @@
 from fastapi import APIRouter
+
+# Chaque sous-module expose son propre router (préfixe local, ex: /auth, /users...) ;
+# on les importe tous ici pour les rattacher à un unique router agrégateur.
 from app.api.v1.auth.router import router as auth_router
 from app.api.v1.audit.router import router as audit_router
 from app.api.v1.users.router import router as users_router
@@ -17,7 +20,15 @@ from app.api.v1.compliance.router import router as compliance_router
 from app.api.v1.vulnerabilities.router import router as vulnerabilities_router
 from app.api.v1.threat_intel.router import router as threat_intel_router
 
-api_router = APIRouter()
+# Le préfixe "/api/v1" est appliqué une seule fois, par main.py
+# (`app.include_router(api_router, prefix="/api/v1")`) — ne pas le répéter ici,
+# sous peine de monter les routes sous /api/v1/api/v1/... (cf. tokenUrl OAuth2
+# dans core/security.py et tests/integration/test_api_auth.py, qui attendent
+# un préfixe unique).
+api_router = APIRouter(
+    tags=["API V1"],
+    responses={404: {"description": "Route introuvable"}},
+)
 api_router.include_router(auth_router)
 api_router.include_router(audit_router)
 api_router.include_router(users_router)

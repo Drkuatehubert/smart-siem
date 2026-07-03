@@ -1,4 +1,4 @@
-﻿from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends
 from app.api.v1.sources.schemas import SourceCreate, SourceListResponse
 from app.api.v1.sources.service import list_sources, create_source
 from app.core.rbac import require_permission, require_admin
@@ -8,4 +8,6 @@ async def get_sources(page: int = 1, size: int = 50, _=Depends(require_permissio
     return await list_sources(page, size)
 @router.post("", status_code=201)
 async def create(body: SourceCreate, _=Depends(require_admin)):
+    # Déclarer une nouvelle source de logs est une opération d'administration
+    # (impacte la configuration de collecte), donc réservée aux administrateurs.
     return await create_source(body.model_dump())

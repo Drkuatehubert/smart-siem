@@ -19,6 +19,9 @@ async def get_alerts(
     size: int = Query(50, ge=1, le=200),
     current_user: dict = Depends(require_permission("alerts:read")),
 ):
+    # org_scope de l'utilisateur courant, jamais celui d'un paramètre de requête :
+    # empêche un utilisateur de consulter les alertes d'une autre organisation
+    # simplement en changeant un paramètre d'URL.
     org_scope = current_user.get("org_scope")
     result = await list_alerts(niveau, statut, page, size, org_scope)
     await write_audit_log(

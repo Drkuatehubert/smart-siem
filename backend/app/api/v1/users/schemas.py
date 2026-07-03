@@ -1,14 +1,14 @@
-﻿"""
-schemas.py â€” SchÃ©mas Pydantic pour la gestion des utilisateurs (durcis)
+"""
+schemas.py — Schémas Pydantic pour la gestion des utilisateurs (durcis)
 
-Responsable : Chef de Projet & SÃ©curitÃ©
+Responsable : Chef de Projet & Sécurité
 Exigences : RF-SEC-02, RF-SEC-04
 
-Durcissements par rapport Ã  la version initiale :
-  * `role_id` est une `Literal[...]` â‡’ impossible de crÃ©er un utilisateur
-    avec un rÃ´le non reconnu (anti privilege-escalation) ;
-  * `password` a des bornes explicites et la politique `PASSWORD_*` est appliquÃ©e ;
-  * nouveaux schÃ©mas `UserUpdate`, `SetActiveRequest` ;
+Durcissements par rapport à la version initiale :
+  * `role_id` est une `Literal[...]` ⇒ impossible de créer un utilisateur
+    avec un rôle non reconnu (anti privilege-escalation) ;
+  * `password` a des bornes explicites et la politique `PASSWORD_*` est appliquée ;
+  * nouveaux schémas `UserUpdate`, `SetActiveRequest` ;
   * `UserOut` n'expose jamais `password_hash` ni `password_history`.
 """
 
@@ -23,21 +23,27 @@ from app.core.rbac import Role
 
 
 class UserCreate(BaseModel):
-    """CrÃ©ation d'un utilisateur (admin uniquement)."""
+    """Création d'un utilisateur (admin uniquement)."""
     username: str = Field(..., min_length=3, max_length=50, pattern=r"^[a-zA-Z0-9._-]+$")
     email: Optional[EmailStr] = None
     password: str = Field(..., min_length=1, max_length=4096)
+    # Literal[...] plutôt que `str` : Pydantic refuse toute valeur hors de cette liste,
+    # empêchant qu'un rôle mal orthographié ou inventé soit accepté silencieusement.
     role_id: Literal["lecteur", "analyste", "administrateur", "auditeur"] = Role.LECTEUR
     org_scope: Optional[str] = Field(default=None, max_length=64)
 
     @field_validator("password")
     @classmethod
     def _check_strength(cls, v: str) -> str:
+        # Réutilise la même politique de robustesse que le changement de mot de passe
+        # (voir api/v1/auth/schemas.py) : un seul endroit définit ce qu'est "un mot de passe valide".
         return _validate_password_strength(v)
 
 
 class UserUpdate(BaseModel):
-    """Mise Ã  jour partielle (PATCH /users/{id}). Tous champs optionnels."""
+    """Mise à jour partielle (PATCH /users/{id}). Tous champs optionnels."""
+    # Tous les champs sont optionnels : seuls ceux effectivement fournis par le client
+    # (via `model_dump(exclude_unset=True)` côté router) sont appliqués en base.
     email: Optional[EmailStr] = None
     role_id: Optional[Literal["lecteur", "analyste", "administrateur", "auditeur"]] = None
     org_scope: Optional[str] = Field(default=None, max_length=64)
@@ -49,7 +55,10 @@ class SetActiveRequest(BaseModel):
 
 
 class UserOut(BaseModel):
-    """Sortie publique â€” ne JAMAIS inclure password_hash."""
+    """Sortie publique — ne JAMAIS inclure password_hash."""
+    # Ce modèle sert de "liste blanche" des champs exposables : même si le document
+    # Elasticsearch sous-jacent contient plus de champs (dont des sensibles),
+    # seuls ceux déclarés ici peuvent atteindre le client.
     id: str
     username: str
     email: Optional[EmailStr] = None

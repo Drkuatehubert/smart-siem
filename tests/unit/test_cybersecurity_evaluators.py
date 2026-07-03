@@ -7,6 +7,7 @@ Responsable : Ingénieur QA / Sécurité
 from __future__ import annotations
 
 import ssl
+from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
@@ -198,14 +199,18 @@ async def test_ueba_risk_scorer_decay():
     """Vérifie le calcul du score de risque UEBA avec decay temporel."""
     mock_es = AsyncMock()
 
-    # Mock de la dernière alerte de risque UEBA indexée il y a 2 heures avec score 80
+    # Mock de la dernière alerte de risque UEBA indexée il y a 2 heures avec score 80.
+    # Le timestamp est calculé par rapport à "maintenant" (et non figé en dur) : compute_risk_score
+    # compare created_at à datetime.now(), un horodatage absolu rendrait ce test dépendant
+    # de la date d'exécution (le decay grandit avec le temps écoulé réel).
+    two_hours_ago = (datetime.now(timezone.utc) - timedelta(hours=2)).isoformat().replace("+00:00", "Z")
     mock_es.search.return_value = {
         "hits": {
             "hits": [
                 {
                     "_source": {
                         "score_risque": 80,
-                        "created_at": "2026-06-25T20:00:00Z",  # Local time is 22:00 in the test
+                        "created_at": two_hours_ago,
                         "rule_id": "ueba-detection"
                     }
                 }

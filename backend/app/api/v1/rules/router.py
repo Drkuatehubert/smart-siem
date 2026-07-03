@@ -18,6 +18,8 @@ async def get_rules(
 
 @router.post("", status_code=201)
 async def create(body: RuleCreate, current_user=Depends(require_admin)):
+    # Création réservée aux administrateurs : une règle mal configurée peut générer
+    # un flot d'alertes ou, à l'inverse, masquer des menaces réelles.
     return await create_rule(body.model_dump(), current_user["sub"])
 
 

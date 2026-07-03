@@ -136,8 +136,10 @@ async def authenticate_user(
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    # Verrouillage ?
-    if await _is_locked(user, username, ip):
+    # Vérification du mot de passe (comparaison bcrypt en temps constant).
+    password_ok = verify_password(password, user["password_hash"])
+
+    if not password_ok:
         await write_audit_log(
             user_id=user_id,
             action="connexion_echouee",
@@ -145,7 +147,7 @@ async def authenticate_user(
             user_agent=user_agent,
             request_id=request_id,
             status="failure",
-            details={"username": username, "reason": "locked"},
+            details={"username": username, "reason": "bad_password"},
         )
         raise HTTPException(
             status_code=status.HTTP_423_LOCKED,
@@ -203,6 +205,7 @@ async def authenticate_user(
                 datetime.now(timezone.utc), user["id"],
             )
     except Exception:
+        # Une erreur ici ne doit pas empêcher la connexion de réussir.
         pass
 
     await write_audit_log(

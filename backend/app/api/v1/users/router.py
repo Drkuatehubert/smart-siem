@@ -1,17 +1,17 @@
-﻿"""
-router.py â€” Endpoints de gestion des utilisateurs (durcis)
+"""
+router.py — Endpoints de gestion des utilisateurs (durcis)
 
-Responsable : Chef de Projet & SÃ©curitÃ©
+Responsable : Chef de Projet & Sécurité
 Exigences : RF-SEC-02, RF-SEC-04
 
 Endpoints (tous sous /api/v1/users) :
-  GET    /                  â€” liste paginÃ©e (admin/auditeur)
-  GET    /{user_id}         â€” dÃ©tail (admin/auditeur)
-  POST   /                  â€” crÃ©ation (admin)
-  PATCH  /{user_id}         â€” modification partielle (admin, last-admin guard)
-  DELETE /{user_id}         â€” suppression (admin, last-admin guard)
-  POST   /{user_id}/disable â€” dÃ©sactivation (admin, SOAR-friendly)
-  POST   /{user_id}/enable  â€” rÃ©activation (admin)
+  GET    /                  — liste paginée (admin/auditeur)
+  GET    /{user_id}         — détail (admin/auditeur)
+  POST   /                  — création (admin)
+  PATCH  /{user_id}         — modification partielle (admin, last-admin guard)
+  DELETE /{user_id}         — suppression (admin, last-admin guard)
+  POST   /{user_id}/disable — désactivation (admin, SOAR-friendly)
+  POST   /{user_id}/enable  — réactivation (admin)
 """
 
 from __future__ import annotations
@@ -42,6 +42,7 @@ router = APIRouter(prefix="/users", tags=["Utilisateurs"])
 
 
 def _meta(request: Request) -> dict:
+    # Contexte de requête réutilisé pour chaque écriture d'audit ci-dessous.
     return {
         "ip": request.client.host if request.client else None,
         "ua": request.headers.get("user-agent"),
@@ -55,6 +56,7 @@ def _meta(request: Request) -> dict:
 async def get_users(
     page: int = 1,
     size: int = 50,
+    # require_auditor : accessible aux administrateurs ET aux auditeurs (lecture seule).
     current_user: dict = Depends(require_auditor),
 ):
     return await list_users(page=page, size=size)
@@ -75,10 +77,13 @@ async def get_user(
 async def create(
     request: Request,
     body: UserCreate,
+    # require_admin : seul un administrateur peut créer un utilisateur.
     current_user: dict = Depends(require_admin),
 ):
     m = _meta(request)
     result = await create_user(body.model_dump())
+    # Chaque action sensible (création/modification/suppression/activation d'un
+    # utilisateur) est tracée dans le journal d'audit, avec qui l'a fait et sur quelle cible.
     await write_audit_log(
         user_id=current_user["sub"],
         action="creation_utilisateur",
@@ -102,6 +107,8 @@ async def patch_user(
     current_user: dict = Depends(require_admin),
 ):
     m = _meta(request)
+    # exclude_unset=True : seuls les champs explicitement envoyés par le client
+    # sont transmis à update_user (un champ omis reste inchangé en base).
     result = await update_user(user_id, body.model_dump(exclude_unset=True))
     if not result:
         raise HTTPException(status_code=404, detail="Utilisateur introuvable")
@@ -148,6 +155,8 @@ async def disable(
     request: Request,
     current_user: dict = Depends(require_admin),
 ):
+    # Endpoint dédié (plutôt que de passer par PATCH) car réutilisé tel quel par
+    # les playbooks SOAR pour désactiver automatiquement un compte compromis.
     m = _meta(request)
     result = await set_user_active(user_id, False)
     if not result:
@@ -177,6 +186,8 @@ async def enable(
         raise HTTPException(status_code=404, detail="Utilisateur introuvable")
     await write_audit_log(
         user_id=current_user["sub"],
+        # L'action journalisée reflète le sens réel de l'opération, même si le nom
+        # de l'endpoint est toujours "/enable" (body.is_active peut valoir False).
         action="utilisateur_reactive" if body.is_active else "utilisateur_desactive",
         ip_address=m["ip"],
         user_agent=m["ua"],

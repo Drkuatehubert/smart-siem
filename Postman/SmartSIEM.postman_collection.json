@@ -1,0 +1,2204 @@
+{
+  "info": {
+    "name": "Smart SIEM - API Backend",
+    "description": "Collection Postman complete de l'API REST du Smart SIEM (UCAC-ICAM).\n\nCouvre : Authentification (JWT + MFA/TOTP), Journal d'audit, Utilisateurs (RBAC), Logs, Alertes, Incidents, Regles de correlation (MITRE ATT&CK), Sources, Dashboard, Rapports, Sante.\n\n--- Démarrage rapide ---\n1. Selectionner l'environnement 'Smart SIEM - Local' (ou dupliquer/adapter baseUrl).\n2. Executer 'Authentification > Login'. Le token est sauvegarde automatiquement.\n3. Si mfa_required=true, executer 'Authentification > MFA - Verifier le code TOTP'.\n4. Toutes les autres requetes reutilisent {{access_token}} automatiquement (Bearer Token herite).\n5. Les requetes 'Lister ...' sauvegardent automatiquement le premier ID de la liste (user_id, alert_id, incident_id, rule_id, source_id, log_id) pour les requetes suivantes.\n\nNB : les chemins reels de l'API contiennent un prefixe double /api/v1/api/v1/... (voir README - section Anomalies). Cette collection reflete l'API telle que specifiee dans openapi.json.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{access_token}}",
+        "type": "string"
+      }
+    ]
+  },
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Script global execute avant chaque requete de la collection.",
+          "// Rien de special ici pour le moment - reserve pour un futur besoin",
+          "// (ex : renouvellement automatique du token si expire)."
+        ]
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8000",
+      "type": "string"
+    },
+    {
+      "key": "username",
+      "value": "analyste01",
+      "type": "string"
+    },
+    {
+      "key": "password",
+      "value": "MonMotDePasse123!",
+      "type": "string"
+    },
+    {
+      "key": "access_token",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "refresh_token",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "mfa_token",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "mfa_secret",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "reset_token",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "user_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "alert_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "incident_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "rule_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "source_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "log_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "report_id",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "🔐 Authentification",
+      "description": "Connexion, MFA (TOTP), rafraîchissement de session, gestion du mot de passe.",
+      "item": [
+        {
+          "name": "Login - Connexion utilisateur",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/api/v1/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "api",
+                "v1",
+                "auth",
+                "login"
+              ]
+            },
+            "description": "Authentifie l'utilisateur. Si la MFA est activee, la reponse contient mfa_required=true et un mfa_token a echanger via /auth/mfa/verify.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"{{username}}\",\n  \"password\": \"{{password}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Le statut HTTP est un succes', function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 201, 202, 204]);",
+                  "});",
+                  "",
+                  "if (pm.response.code !== 204) {",
+                  "    pm.test('La reponse est un JSON valide', function () {",
+                  "        pm.response.to.have.jsonBody();",
+                  "    });",
+                  "}",
+                  "",
+                  "var jsonData = pm.response.json();",
+                  "",
+                  "if (jsonData.mfa_required) {",
+                  "    pm.collectionVariables.set('mfa_token', jsonData.mfa_token);",
+                  "    console.log('MFA requise : mfa_token sauvegarde. Utilisez la requete MFA - Verifier le code TOTP.');",
+                  "} else {",
+                  "    pm.collectionVariables.set('access_token', jsonData.access_token);",
+                  "    pm.collectionVariables.set('refresh_token', jsonData.refresh_token);",
+                  "    pm.collectionVariables.set('user_id', jsonData.user.user_id);",
+                  "    console.log('access_token et refresh_token sauvegardes.');",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "MFA - Générer le secret TOTP",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/api/v1/auth/mfa/setup",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "api",
+                "v1",
+                "auth",
+                "mfa",
+                "setup"
+              ]
+            },
+            "description": "Genere un secret TOTP + une URI otpauth:// (a convertir en QR code) pour activer la MFA sur le compte connecte."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Le statut HTTP est un succes', function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 201, 202, 204]);",
+                  "});",
+                  "",
+                  "if (pm.response.code !== 204) {",
+                  "    pm.test('La reponse est un JSON valide', function () {",
+                  "        pm.response.to.have.jsonBody();",
+                  "    });",
+                  "}",
+                  "",
+                  "var jsonData = pm.response.json();",
+                  "pm.collectionVariables.set('mfa_secret', jsonData.secret);",
+                  "console.log('otpauth_uri : ' + jsonData.otpauth_uri);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "MFA - Vérifier le code TOTP",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/api/v1/auth/mfa/verify",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "api",
+                "v1",
+                "auth",
+                "mfa",
+                "verify"
+              ]
+            },
+            "description": "Complete le login en verifiant le code TOTP a 6 chiffres genere par l'application d'authentification, a partir du mfa_token recu au login.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"mfa_token\": \"{{mfa_token}}\",\n  \"code\": \"123456\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Le statut HTTP est un succes', function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 201, 202, 204]);",
+                  "});",
+                  "",
+                  "if (pm.response.code !== 204) {",
+                  "    pm.test('La reponse est un JSON valide', function () {",
+                  "        pm.response.to.have.jsonBody();",
+                  "    });",
+                  "}",
+                  "",
+                  "var jsonData = pm.response.json();",
+                  "pm.collectionVariables.set('access_token', jsonData.access_token);",
+                  "pm.collectionVariables.set('refresh_token', jsonData.refresh_token);",
+                  "pm.collectionVariables.set('user_id', jsonData.user.user_id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Mon profil (/auth/me)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/api/v1/auth/me",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "api",
+                "v1",
+                "auth",
+                "me"
+              ]
+            },
+            "description": "Retourne le profil de l'utilisateur actuellement authentifie."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Le statut HTTP est un succes', function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 201, 202, 204]);",
+                  "});",
+                  "",
+                  "if (pm.response.code !== 204) {",
+                  "    pm.test('La reponse est un JSON valide', function () {",
+                  "        pm.response.to.have.jsonBody();",
+                  "    });",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Rafraîchir le token",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/api/v1/auth/refresh",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "api",
+                "v1",
+                "auth",
+                "refresh"
+              ]
+            },
+            "description": "Genere un nouvel access_token a partir du refresh_token courant.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refresh_token\": \"{{refresh_token}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Le statut HTTP est un succes', function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 201, 202, 204]);",
+                  "});",
+                  "",
+                  "if (pm.response.code !== 204) {",
+                  "    pm.test('La reponse est un JSON valide', function () {",
+                  "        pm.response.to.have.jsonBody();",
+                  "    });",
+                  "}",
+                  "",
+                  "var jsonData = pm.response.json();",
+                  "pm.collectionVariables.set('access_token', jsonData.access_token);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Changer le mot de passe",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/api/v1/auth/password/change",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "api",
+                "v1",
+                "auth",
+                "password",
+                "change"
+              ]
+            },
+            "description": "Change le mot de passe de l'utilisateur authentifie.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"old_password\": \"AncienMotDePasse123!\",\n  \"new_password\": \"NouveauMotDePasse456!\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Le statut HTTP est un succes', function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 201, 202, 204]);",
+                  "});",
+                  "",
+                  "if (pm.response.code !== 204) {",
+                  "    pm.test('La reponse est un JSON valide', function () {",
+                  "        pm.response.to.have.jsonBody();",
+                  "    });",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Demander une réinitialisation de mot de passe",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/api/v1/auth/password/reset-request",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "api",
+                "v1",
+                "auth",
+                "password",
+                "reset-request"
+              ]
+            },
+            "description": "Endpoint public. Renvoie toujours 200 (anti-enumeration) ; l'email de reset n'est envoye que si le compte existe.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"{{username}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Le statut HTTP est un succes', function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 201, 202, 204]);",
+                  "});",
+                  "",
+                  "if (pm.response.code !== 204) {",
+                  "    pm.test('La reponse est un JSON valide', function () {",
+                  "        pm.response.to.have.jsonBody();",
+                  "    });",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Confirmer la réinitialisation de mot de passe",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/api/v1/auth/password/reset-confirm",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "api",
+                "v1",
+                "auth",
+                "password",
+                "reset-confirm"
+              ]
+            },
+            "description": "Consomme le reset_token recu par email pour definir un nouveau mot de passe.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reset_token\": \"{{reset_token}}\",\n  \"new_password\": \"NouveauMotDePasse456!\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Le statut HTTP est un succes', function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 201, 202, 204]);",
+                  "});",
+                  "",
+                  "if (pm.response.code !== 204) {",
+                  "    pm.test('La reponse est un JSON valide', function () {",
+                  "        pm.response.to.have.jsonBody();",
+                  "    });",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Déconnexion",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/api/v1/auth/logout",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "api",
+                "v1",
+                "auth",
+                "logout"
+              ]
+            },
+            "description": "Revoque le token JWT courant et journalise la deconnexion."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Le statut HTTP est un succes', function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 201, 202, 204]);",
+                  "});",
+                  "",
+                  "if (pm.response.code !== 204) {",
+                  "    pm.test('La reponse est un JSON valide', function () {",
+                  "        pm.response.to.have.jsonBody();",
+                  "    });",
+                  "}",
+                  "",
+                  "pm.collectionVariables.set('access_token', '');",
+                  "console.log('access_token efface localement.');"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "📋 Journal d'audit",
+      "description": "Consultation et export du journal d'audit. Reserve aux roles Administrateur / Auditeur.",
+      "item": [
+        {
+          "name": "Journal d'audit complet",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/api/v1/audit/logs?page=1&size=50",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "api",
+                "v1",
+                "audit",
+                "logs"
+              ],
+              "query": [
+                {
+                  "key": "user_id",
+                  "value": "",
+                  "disabled": true
+                },
+                {
+                  "key": "action",
+                  "value": "",
+                  "disabled": true
+                },
+                {
+                  "key": "from_date",
+                  "value": "2026-06-01",
+                  "disabled": true
+                },
+                {
+                  "key": "to_date",
+                  "value": "2026-07-01",
+                  "disabled": true
+                },
+                {
+                  "key": "page",
+                  "value": "1",
+                  "disabled": false
+                },
+                {
+                  "key": "size",
+                  "value": "50",
+                  "disabled": false
+                }
+              ]
+            },
+            "description": "Consulte toutes les actions utilisateurs, avec filtres optionnels."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Le statut HTTP est un succes', function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 201, 202, 204]);",
+                  "});",
+                  "",
+                  "if (pm.response.code !== 204) {",
+                  "    pm.test('La reponse est un JSON valide', function () {",
+                  "        pm.response.to.have.jsonBody();",
+                  "    });",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Échecs de connexion",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/api/v1/audit/failed-logins?page=1&size=50",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "api",
+                "v1",
+                "audit",
+                "failed-logins"
+              ],
+              "query": [
+                {
+                  "key": "from_date",
+                  "value": "2026-06-01",
+                  "disabled": true
+                },
+                {
+                  "key": "to_date",
+                  "value": "2026-07-01",
+                  "disabled": true
+                },
+                {
+                  "key": "page",
+                  "value": "1",
+                  "disabled": false
+                },
+                {
+                  "key": "size",
+                  "value": "50",
+                  "disabled": false
+                }
+              ]
+            },
+            "description": "Agrege les evenements connexion_echouee et compte_verrouille."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Le statut HTTP est un succes', function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 201, 202, 204]);",
+                  "});",
+                  "",
+                  "if (pm.response.code !== 204) {",
+                  "    pm.test('La reponse est un JSON valide', function () {",
+                  "        pm.response.to.have.jsonBody();",
+                  "    });",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Export du journal d'audit (CSV/JSONL)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/api/v1/audit/logs/export?format=csv&max_rows=50000",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "api",
+                "v1",
+                "audit",
+                "logs",
+                "export"
+              ],
+              "query": [
+                {
+                  "key": "format",
+                  "value": "csv",
+                  "disabled": false
+                },
+                {
+                  "key": "from_date",
+                  "value": "2026-06-01",
+                  "disabled": true
+                },
+                {
+                  "key": "to_date",
+                  "value": "2026-07-01",
+                  "disabled": true
+                },
+                {
+                  "key": "max_rows",
+                  "value": "50000",
+                  "disabled": false
+                }
+              ]
+            },
+            "description": "Export en flux (streaming) du journal d'audit. Non pagine cote client : utiliser max_rows pour borner le volume."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Le statut HTTP est un succes', function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 201, 202, 204]);",
+                  "});",
+                  "",
+                  "if (pm.response.code !== 204) {",
+                  "    pm.test('La reponse est un JSON valide', function () {",
+                  "        pm.response.to.have.jsonBody();",
+                  "    });",
+                  "}"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "👤 Utilisateurs",
+      "description": "Gestion des comptes utilisateurs et du RBAC (lecteur / analyste / administrateur / auditeur).",
+      "item": [
+        {
+          "name": "Lister les utilisateurs",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/api/v1/users?page=1&size=50",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "api",
+                "v1",
+                "users"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1",
+                  "disabled": false
+                },
+                {
+                  "key": "size",
+                  "value": "50",
+                  "disabled": false
+                }
+              ]
+            },
+            "description": "Liste paginee des utilisateurs."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Le statut HTTP est un succes', function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 201, 202, 204]);",
+                  "});",
+                  "",
+                  "if (pm.response.code !== 204) {",
+                  "    pm.test('La reponse est un JSON valide', function () {",
+                  "        pm.response.to.have.jsonBody();",
+                  "    });",
+                  "}",
+                  "",
+                  "var jsonData = pm.response.json();",
+                  "if (jsonData.results && jsonData.results.length > 0) {",
+                  "    pm.collectionVariables.set('user_id', jsonData.results[0].id);",
+                  "    console.log('user_id sauvegarde : ' + jsonData.results[0].id);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Créer un utilisateur",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/api/v1/users",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "api",
+                "v1",
+                "users"
+              ]
+            },
+            "description": "Creation d'un utilisateur (reserve Administrateur).",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"analyste02\",\n  \"email\": \"analyste02@smartsiem.local\",\n  \"password\": \"MotDePasseTemporaire123!\",\n  \"role_id\": \"analyste\",\n  \"org_scope\": \"SOC-CTU\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Le statut HTTP est un succes', function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 201, 202, 204]);",
+                  "});",
+                  "",
+                  "if (pm.response.code !== 204) {",
+                  "    pm.test('La reponse est un JSON valide', function () {",
+                  "        pm.response.to.have.jsonBody();",
+                  "    });",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Détail d'un utilisateur",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/api/v1/users/{{user_id}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "api",
+                "v1",
+                "users",
+                "{{user_id}}"
+              ]
+            },
+            "description": "Recupere le detail d'un utilisateur par son ID."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Le statut HTTP est un succes', function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 201, 202, 204]);",
+                  "});",
+                  "",
+                  "if (pm.response.code !== 204) {",
+                  "    pm.test('La reponse est un JSON valide', function () {",
+                  "        pm.response.to.have.jsonBody();",
+                  "    });",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Modifier un utilisateur",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/api/v1/users/{{user_id}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "api",
+                "v1",
+                "users",
+                "{{user_id}}"
+              ]
+            },
+            "description": "Mise a jour partielle (tous les champs sont optionnels).",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"role_id\": \"analyste\",\n  \"is_active\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Le statut HTTP est un succes', function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 201, 202, 204]);",
+                  "});",
+                  "",
+                  "if (pm.response.code !== 204) {",
+                  "    pm.test('La reponse est un JSON valide', function () {",
+                  "        pm.response.to.have.jsonBody();",
+                  "    });",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Désactiver un utilisateur",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/api/v1/users/{{user_id}}/disable",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "api",
+                "v1",
+                "users",
+                "{{user_id}}",
+                "disable"
+              ]
+            },
+            "description": "Desactive un compte sans le supprimer."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Le statut HTTP est un succes', function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 201, 202, 204]);",
+                  "});",
+                  "",
+                  "if (pm.response.code !== 204) {",
+                  "    pm.test('La reponse est un JSON valide', function () {",
+                  "        pm.response.to.have.jsonBody();",
+                  "    });",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Activer un utilisateur",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/api/v1/users/{{user_id}}/enable",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "api",
+                "v1",
+                "users",
+                "{{user_id}}",
+                "enable"
+              ]
+            },
+            "description": "(Re)active un compte utilisateur.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"is_active\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Le statut HTTP est un succes', function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 201, 202, 204]);",
+                  "});",
+                  "",
+                  "if (pm.response.code !== 204) {",
+                  "    pm.test('La reponse est un JSON valide', function () {",
+                  "        pm.response.to.have.jsonBody();",
+                  "    });",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Supprimer un utilisateur",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/api/v1/users/{{user_id}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "api",
+                "v1",
+                "users",
+                "{{user_id}}"
+              ]
+            },
+            "description": "Suppression definitive d'un utilisateur. ATTENTION : action irreversible."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Le statut HTTP est un succes', function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 201, 202, 204]);",
+                  "});",
+                  "",
+                  "if (pm.response.code !== 204) {",
+                  "    pm.test('La reponse est un JSON valide', function () {",
+                  "        pm.response.to.have.jsonBody();",
+                  "    });",
+                  "}"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "📄 Logs",
+      "description": "Recherche, consultation, marquage et agregation MITRE ATT&CK des logs.",
+      "item": [
+        {
+          "name": "Rechercher des logs (GET)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/api/v1/logs/logs/search?",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "api",
+                "v1",
+                "logs",
+                "logs",
+                "search"
+              ],
+              "query": [
+                {
+                  "key": "source",
+                  "value": "",
+                  "disabled": true
+                },
+                {
+                  "key": "query",
+                  "value": "failed login",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "Recherche de logs via parametres de requete simples."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Le statut HTTP est un succes', function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 201, 202, 204]);",
+                  "});",
+                  "",
+                  "if (pm.response.code !== 204) {",
+                  "    pm.test('La reponse est un JSON valide', function () {",
+                  "        pm.response.to.have.jsonBody();",
+                  "    });",
+                  "}",
+                  "",
+                  "var jsonData = pm.response.json();",
+                  "if (jsonData.results && jsonData.results.length > 0) {",
+                  "    pm.collectionVariables.set('log_id', jsonData.results[0].id);",
+                  "    console.log('log_id sauvegarde : ' + jsonData.results[0].id);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Rechercher des logs (POST)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/api/v1/logs/logs/search?",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "api",
+                "v1",
+                "logs",
+                "logs",
+                "search"
+              ],
+              "query": [
+                {
+                  "key": "source",
+                  "value": "",
+                  "disabled": true
+                },
+                {
+                  "key": "query",
+                  "value": "failed login",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "Variante POST du meme endpoint de recherche (memes parametres de requete, pas de corps JSON dedie)."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Le statut HTTP est un succes', function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 201, 202, 204]);",
+                  "});",
+                  "",
+                  "if (pm.response.code !== 204) {",
+                  "    pm.test('La reponse est un JSON valide', function () {",
+                  "        pm.response.to.have.jsonBody();",
+                  "    });",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Détail d'un log",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/api/v1/logs/logs/{{log_id}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "api",
+                "v1",
+                "logs",
+                "logs",
+                "{{log_id}}"
+              ]
+            },
+            "description": "Recupere un log precis par son ID."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Le statut HTTP est un succes', function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 201, 202, 204]);",
+                  "});",
+                  "",
+                  "if (pm.response.code !== 204) {",
+                  "    pm.test('La reponse est un JSON valide', function () {",
+                  "        pm.response.to.have.jsonBody();",
+                  "    });",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Marquer un log comme suspect (flag)",
+          "request": {
+            "method": "PATCH",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/api/v1/logs/logs/{{log_id}}/flag?flagged=true",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "api",
+                "v1",
+                "logs",
+                "logs",
+                "{{log_id}}",
+                "flag"
+              ],
+              "query": [
+                {
+                  "key": "flagged",
+                  "value": "true",
+                  "disabled": false
+                }
+              ]
+            },
+            "description": "Marque ou demarque un log pour investigation croisee."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Le statut HTTP est un succes', function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 201, 202, 204]);",
+                  "});",
+                  "",
+                  "if (pm.response.code !== 204) {",
+                  "    pm.test('La reponse est un JSON valide', function () {",
+                  "        pm.response.to.have.jsonBody();",
+                  "    });",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Agrégation MITRE ATT&CK",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/api/v1/logs/logs/mitre/aggregate",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "api",
+                "v1",
+                "logs",
+                "logs",
+                "mitre",
+                "aggregate"
+              ]
+            },
+            "description": "Agregation des evenements par tactique/technique MITRE ATT&CK."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Le statut HTTP est un succes', function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 201, 202, 204]);",
+                  "});",
+                  "",
+                  "if (pm.response.code !== 204) {",
+                  "    pm.test('La reponse est un JSON valide', function () {",
+                  "        pm.response.to.have.jsonBody();",
+                  "    });",
+                  "}"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "🚨 Alertes",
+      "description": "Consultation et traitement des alertes generees par le moteur de correlation.",
+      "item": [
+        {
+          "name": "Lister les alertes",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/api/v1/alerts?page=1&size=50",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "api",
+                "v1",
+                "alerts"
+              ],
+              "query": [
+                {
+                  "key": "niveau",
+                  "value": "CRITICAL",
+                  "disabled": true
+                },
+                {
+                  "key": "statut",
+                  "value": "ouvert",
+                  "disabled": true
+                },
+                {
+                  "key": "page",
+                  "value": "1",
+                  "disabled": false
+                },
+                {
+                  "key": "size",
+                  "value": "50",
+                  "disabled": false
+                }
+              ]
+            },
+            "description": "Liste des alertes, filtrable par niveau (INFO/WARNING/HIGH/CRITICAL) et statut."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Le statut HTTP est un succes', function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 201, 202, 204]);",
+                  "});",
+                  "",
+                  "if (pm.response.code !== 204) {",
+                  "    pm.test('La reponse est un JSON valide', function () {",
+                  "        pm.response.to.have.jsonBody();",
+                  "    });",
+                  "}",
+                  "",
+                  "var jsonData = pm.response.json();",
+                  "if (jsonData.results && jsonData.results.length > 0) {",
+                  "    pm.collectionVariables.set('alert_id', jsonData.results[0].id);",
+                  "    console.log('alert_id sauvegarde : ' + jsonData.results[0].id);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Mettre à jour le statut d'une alerte",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/api/v1/alerts/{{alert_id}}/status",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "api",
+                "v1",
+                "alerts",
+                "{{alert_id}}",
+                "status"
+              ]
+            },
+            "description": "Workflow SOC : ouvert -> en_cours -> resolu. Permet aussi d'assigner l'alerte et d'ajouter un commentaire.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"statut\": \"en_cours\",\n  \"assigned_to\": \"{{user_id}}\",\n  \"commentaires\": \"Investigation en cours - correlation avec incident INC-042\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Le statut HTTP est un succes', function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 201, 202, 204]);",
+                  "});",
+                  "",
+                  "if (pm.response.code !== 204) {",
+                  "    pm.test('La reponse est un JSON valide', function () {",
+                  "        pm.response.to.have.jsonBody();",
+                  "    });",
+                  "}"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "🧯 Incidents",
+      "description": "Creation et suivi des incidents de securite.",
+      "item": [
+        {
+          "name": "Lister les incidents",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/api/v1/incidents?page=1&size=50",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "api",
+                "v1",
+                "incidents"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1",
+                  "disabled": false
+                },
+                {
+                  "key": "size",
+                  "value": "50",
+                  "disabled": false
+                }
+              ]
+            },
+            "description": "Liste paginee des incidents."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Le statut HTTP est un succes', function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 201, 202, 204]);",
+                  "});",
+                  "",
+                  "if (pm.response.code !== 204) {",
+                  "    pm.test('La reponse est un JSON valide', function () {",
+                  "        pm.response.to.have.jsonBody();",
+                  "    });",
+                  "}",
+                  "",
+                  "var jsonData = pm.response.json();",
+                  "if (jsonData.results && jsonData.results.length > 0) {",
+                  "    pm.collectionVariables.set('incident_id', jsonData.results[0].id);",
+                  "    console.log('incident_id sauvegarde : ' + jsonData.results[0].id);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Créer un incident",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/api/v1/incidents",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "api",
+                "v1",
+                "incidents"
+              ]
+            },
+            "description": "Cree un incident, eventuellement rattache a une alerte via alert_id.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"alert_id\": \"{{alert_id}}\",\n  \"titre\": \"Compromission compte de service CTU-SVC-003\",\n  \"description\": \"Acces a 47 fichiers classifies en 90 secondes - playbook SOAR AUTO declenche.\",\n  \"statut\": \"ouvert\",\n  \"priorite\": \"P1\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Le statut HTTP est un succes', function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 201, 202, 204]);",
+                  "});",
+                  "",
+                  "if (pm.response.code !== 204) {",
+                  "    pm.test('La reponse est un JSON valide', function () {",
+                  "        pm.response.to.have.jsonBody();",
+                  "    });",
+                  "}"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "⚙️ Règles de corrélation",
+      "description": "CRUD des regles de detection (threshold / pattern), rattachees aux tactiques MITRE ATT&CK.",
+      "item": [
+        {
+          "name": "Lister les règles",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/api/v1/rules?page=1&size=50",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "api",
+                "v1",
+                "rules"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1",
+                  "disabled": false
+                },
+                {
+                  "key": "size",
+                  "value": "50",
+                  "disabled": false
+                }
+              ]
+            },
+            "description": "Liste paginee des regles de correlation."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Le statut HTTP est un succes', function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 201, 202, 204]);",
+                  "});",
+                  "",
+                  "if (pm.response.code !== 204) {",
+                  "    pm.test('La reponse est un JSON valide', function () {",
+                  "        pm.response.to.have.jsonBody();",
+                  "    });",
+                  "}",
+                  "",
+                  "var jsonData = pm.response.json();",
+                  "if (jsonData.results && jsonData.results.length > 0) {",
+                  "    pm.collectionVariables.set('rule_id', jsonData.results[0].id);",
+                  "    console.log('rule_id sauvegarde : ' + jsonData.results[0].id);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Créer une règle (Brute Force SSH)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/api/v1/rules",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "api",
+                "v1",
+                "rules"
+              ]
+            },
+            "description": "Exemple : 5 echecs d'authentification en 60 secondes sur la meme cible (MITRE T1110).",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nom\": \"Brute force SSH\",\n  \"description\": \"5 echecs auth en 60s sur la meme cible\",\n  \"type\": \"threshold\",\n  \"condition\": {\n    \"event_type\": \"auth_failed\",\n    \"threshold\": 5,\n    \"window_s\": 60\n  },\n  \"fenetre_temporelle_s\": 60,\n  \"mitre_tactic\": \"TA0001\",\n  \"niveau_alerte_genere\": \"HIGH\",\n  \"active\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Le statut HTTP est un succes', function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 201, 202, 204]);",
+                  "});",
+                  "",
+                  "if (pm.response.code !== 204) {",
+                  "    pm.test('La reponse est un JSON valide', function () {",
+                  "        pm.response.to.have.jsonBody();",
+                  "    });",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Créer une règle (Exfiltration)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/api/v1/rules",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "api",
+                "v1",
+                "rules"
+              ]
+            },
+            "description": "Exemple : volume de donnees sortant > 10x la baseline sur 15 min (MITRE T1041).",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nom\": \"Exfiltration volumetrique\",\n  \"description\": \"Volume sortant anormal detecte par rapport a la baseline UEBA\",\n  \"type\": \"pattern\",\n  \"condition\": {\n    \"event_type\": \"data_transfer\",\n    \"multiplier_baseline\": 10,\n    \"window_s\": 900\n  },\n  \"fenetre_temporelle_s\": 900,\n  \"mitre_tactic\": \"TA0010\",\n  \"niveau_alerte_genere\": \"CRITICAL\",\n  \"active\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Le statut HTTP est un succes', function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 201, 202, 204]);",
+                  "});",
+                  "",
+                  "if (pm.response.code !== 204) {",
+                  "    pm.test('La reponse est un JSON valide', function () {",
+                  "        pm.response.to.have.jsonBody();",
+                  "    });",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Supprimer une règle",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/api/v1/rules/{{rule_id}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "api",
+                "v1",
+                "rules",
+                "{{rule_id}}"
+              ]
+            },
+            "description": "Supprime definitivement une regle de correlation."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Le statut HTTP est 204 (No Content)', function () {",
+                  "    pm.expect(pm.response.code).to.equal(204);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "🌐 Sources",
+      "description": "Gestion des sources de logs (agents, equipements reseau, serveurs).",
+      "item": [
+        {
+          "name": "Lister les sources",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/api/v1/sources?page=1&size=50",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "api",
+                "v1",
+                "sources"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1",
+                  "disabled": false
+                },
+                {
+                  "key": "size",
+                  "value": "50",
+                  "disabled": false
+                }
+              ]
+            },
+            "description": "Liste paginee des sources de logs enregistrees."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Le statut HTTP est un succes', function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 201, 202, 204]);",
+                  "});",
+                  "",
+                  "if (pm.response.code !== 204) {",
+                  "    pm.test('La reponse est un JSON valide', function () {",
+                  "        pm.response.to.have.jsonBody();",
+                  "    });",
+                  "}",
+                  "",
+                  "var jsonData = pm.response.json();",
+                  "if (jsonData.results && jsonData.results.length > 0) {",
+                  "    pm.collectionVariables.set('source_id', jsonData.results[0].id);",
+                  "    console.log('source_id sauvegarde : ' + jsonData.results[0].id);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Créer une source",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/api/v1/sources",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "api",
+                "v1",
+                "sources"
+              ]
+            },
+            "description": "Declare une nouvelle source de logs.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nom\": \"FW-CTU-EDGE-01\",\n  \"type\": \"pare-feu\",\n  \"adresse_ip\": \"10.10.0.1\",\n  \"environnement\": \"production\",\n  \"statut_collecte\": \"actif\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Le statut HTTP est un succes', function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 201, 202, 204]);",
+                  "});",
+                  "",
+                  "if (pm.response.code !== 204) {",
+                  "    pm.test('La reponse est un JSON valide', function () {",
+                  "        pm.response.to.have.jsonBody();",
+                  "    });",
+                  "}"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "📊 Dashboard",
+      "description": "Indicateurs temps reel pour les vues Analyste / RSSI / Crisis Room.",
+      "item": [
+        {
+          "name": "Synthèse du dashboard",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/api/v1/dashboard/summary",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "api",
+                "v1",
+                "dashboard",
+                "summary"
+              ]
+            },
+            "description": "Volume de logs 24h, alertes ouvertes, repartition par niveau, volume horaire."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Le statut HTTP est un succes', function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 201, 202, 204]);",
+                  "});",
+                  "",
+                  "if (pm.response.code !== 204) {",
+                  "    pm.test('La reponse est un JSON valide', function () {",
+                  "        pm.response.to.have.jsonBody();",
+                  "    });",
+                  "}"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "🧾 Rapports",
+      "description": "Generation asynchrone de rapports (PDF/CSV/Excel).",
+      "item": [
+        {
+          "name": "Générer un rapport hebdomadaire",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/api/v1/reports/generate",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "api",
+                "v1",
+                "reports",
+                "generate"
+              ]
+            },
+            "description": "Declenche la generation asynchrone d'un rapport (202 Accepted = mise en file, pas disponibilite immediate).",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"type\": \"weekly\",\n  \"from_date\": \"2026-06-24\",\n  \"to_date\": \"2026-07-01\",\n  \"format\": \"pdf\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Le rapport est accepte (202)', function () {",
+                  "    pm.expect(pm.response.code).to.equal(202);",
+                  "});",
+                  "var jsonData = pm.response.json();",
+                  "pm.collectionVariables.set('report_id', jsonData.id);",
+                  "console.log('report_id sauvegarde : ' + jsonData.id + ' - statut : ' + jsonData.status);"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "❤️ Santé",
+      "description": "Health-check public du service (RF-COL-05).",
+      "item": [
+        {
+          "name": "Health check",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/health",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "health"
+              ]
+            },
+            "description": "Endpoint de sante public, sans authentification. Utilise pour les sondes de disponibilite.",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Le statut HTTP est un succes', function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 201, 202, 204]);",
+                  "});",
+                  "",
+                  "if (pm.response.code !== 204) {",
+                  "    pm.test('La reponse est un JSON valide', function () {",
+                  "        pm.response.to.have.jsonBody();",
+                  "    });",
+                  "}"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -15,6 +15,8 @@ async def list_incidents() -> list[dict]:
 
 
 async def create_incident(data: dict, owner_id: str):
+    # owner_id vient toujours de l'utilisateur authentifié courant (voir router.py),
+    # jamais d'un champ fourni par le client, pour éviter qu'on s'attribue un incident à un tiers.
     es = get_es_client()
     now = datetime.now(timezone.utc).isoformat()
     doc = {**data, "owner": owner_id, "created_at": now, "updated_at": now}

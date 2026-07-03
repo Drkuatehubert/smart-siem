@@ -19,6 +19,7 @@ class LoginRequest(BaseModel):
     password: str = Field(..., min_length=1, max_length=4096)  # borne haute anti-DoS
 
     class Config:
+        # Exemple affiché dans la documentation interactive (/docs).
         json_schema_extra = {
             "example": {"username": "analyste01", "password": "MonMotDePasse123!"},
         }
@@ -66,6 +67,8 @@ class LoginResponseMfa(BaseModel):
 # ─────────────────────────────────────────────────────────────────────────────
 
 class RefreshRequest(BaseModel):
+    # min_length=20 : un refresh token JWT valide fait toujours bien plus que 20 caractères,
+    # cela rejette immédiatement les valeurs manifestement invalides sans même décoder le JWT.
     refresh_token: str = Field(..., min_length=20)
 
 
@@ -84,12 +87,12 @@ class MfaSetupResponse(BaseModel):
     et l'URI otpauth:// pour QR code.
     """
     secret: str
-    otpauth_uri: str
+    otpauth_uri: str  # peut être transformée en QR code côté frontend pour scan dans l'app d'authentification
 
 
 class MfaVerifyRequest(BaseModel):
     mfa_token: str = Field(..., min_length=20)
-    code: str = Field(..., min_length=6, max_length=8, pattern=r"^\d+$")
+    code: str = Field(..., min_length=6, max_length=8, pattern=r"^\d+$")  # uniquement des chiffres
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -126,18 +129,7 @@ class PasswordChangeRequest(BaseModel):
     @field_validator("new_password")
     @classmethod
     def _check_strength(cls, v: str) -> str:
-        return _validate_password_strength(v)
-
-
-class PasswordResetRequest(BaseModel):
-    username: str = Field(..., min_length=3, max_length=50, pattern=r"^[a-zA-Z0-9._-]+$")
-
-
-class PasswordResetConfirm(BaseModel):
-    reset_token: str = Field(..., min_length=20)
-    new_password: str = Field(..., min_length=1, max_length=4096)
-
-    @field_validator("new_password")
-    @classmethod
-    def _check_strength(cls, v: str) -> str:
+        # Validateur Pydantic exécuté automatiquement à la construction de l'objet :
+        # si le mot de passe ne respecte pas la politique, la requête est rejetée en 422
+        # avant même d'atteindre la logique métier.
         return _validate_password_strength(v)
