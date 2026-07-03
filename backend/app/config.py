@@ -10,10 +10,6 @@ Ce module :
   * verrouille `JWT_ALGORITHM` à un sous-ensemble sûr (pas d'alg="none") ;
   * valide en `prod` que les secrets ne sont pas les valeurs par défaut,
     que TLS ES est actif, et que la doc OpenAPI est désactivée.
-
-NB : les fonctionnalités précédemment adossées à Redis (rate limiting,
-révocation JWT, verrouillage de compte par compteurs, cache utilisateur,
-reset de mot de passe par token) ont été retirées du backend API.
 """
 
 # Permet d'utiliser les annotations de type "en avance" (ex: "Settings" avant sa
@@ -34,28 +30,21 @@ from pydantic import EmailStr, Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
-# ─────────────────────────────────────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────────────────
 # Helpers de validation
-# ─────────────────────────────────────────────────────────────────────────────
-# Cette section contient des fonctions utilitaires utilisées plus bas pour vérifier
-# que la configuration n'est pas dangereuse (ex: mot de passe par défaut en prod).
+# ─────────────────────────────────────────────────────────────────────
 
-# Secrets considérés comme faibles — interdits en production.
-# Si un secret contient un de ces mots, c'est probablement une valeur d'exemple/copiée-collée
-# depuis la documentation, et non un vrai secret généré aléatoirement.
+# Secrets considérés comme faibles — interdits en production
 _FORBIDDEN_SECRET_SUBSTRINGS = (
     "changeme", "password", "secret", "admin", "default", "test", "example",
 )
 
-# Algorithmes JWT autorisés (rien d'autre que du HMAC ou de l'asymétrique sûr).
-# On utilise `Literal` pour que pydantic refuse toute valeur qui ne serait pas dans cette liste
-# (empêche notamment l'algorithme "none", qui permettrait de forger des tokens sans signature).
+# Algorithmes JWT autorisés (rien d'autre que du HMAC ou de l'asymétrique sûr)
 JWT_ALLOWED_ALGS = Literal["HS256", "HS384", "HS512", "RS256", "ES256"]
 
 
 def _is_weak_secret(value: str) -> bool:
     """Renvoie True si la valeur ressemble à un placeholder dev."""
-    # On met tout en minuscules pour comparer sans se soucier de la casse.
     v = value.lower()
     # Un secret trop court (< 32 caractères) est considéré comme faible,
     # même s'il ne contient aucun mot suspect (trop facile à deviner / trop peu d'entropie).
@@ -65,9 +54,9 @@ def _is_weak_secret(value: str) -> bool:
     return any(s in v for s in _FORBIDDEN_SECRET_SUBSTRINGS)
 
 
-# ─────────────────────────────────────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────────────────
 # Settings
-# ─────────────────────────────────────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────────────────
 
 class Settings(BaseSettings):
     """
@@ -89,42 +78,49 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    # ── Environnement ────────────────────────────────────────────────────
-    # APP_ENV pilote tout le comportement "strict" ci-dessous (voir validate_prod).
+    # ── Environnement ────────────────────────────────────────────────
     APP_ENV: Literal["dev", "staging", "prod"] = "dev"
-    DOCS_ENABLED: bool = True  # désactivé automatiquement en prod (évite d'exposer /docs et le schéma OpenAPI)
+    DOCS_ENABLED: bool = True  # désactivé automatiquement en prod
 
-    # ── API ──────────────────────────────────────────────────────────────
-    API_HOST: str = "0.0.0.0"  # écoute sur toutes les interfaces réseau du conteneur/serveur
+    # ── API ──────────────────────────────────────────────────────────
+    API_HOST: str = "0.0.0.0"
     API_PORT: int = 8000
-    # Liste blanche des origines autorisées à appeler l'API depuis un navigateur (CORS).
-    # default_factory (au lieu d'un simple "=") évite de partager la même liste mutable entre instances.
-    CORS_ORIGINS: List[str] = Field(default_factory=lambda: ["http://localhost"])
-    # Liste des noms d'hôte HTTP autorisés (protection contre les attaques "Host header injection").
+    CORS_ORIGINS: list = [
+        "http://localhost:5173",
+        "http://localhost:5174",
+        "http://localhost:5175",
+        "http://localhost:5176",
+        "http://localhost:3000",
+        "http://127.0.0.1:5173",
+        "http://127.0.0.1:8000",
+    ]
     ALLOWED_HOSTS: List[str] = Field(default_factory=lambda: ["localhost", "siem.local"])
 
-    # ── JWT (RF-SEC-01) ──────────────────────────────────────────────────
-    # Clé secrète servant à signer/vérifier les tokens JWT. En dev, valeur factice explicite
-    # (le nom même du texte rappelle qu'elle n'est pas valable en prod). min_length=32 impose
-    # une entropie minimale.
+    # ── JWT (RF-SEC-01) ──────────────────────────────────────────────
     API_SECRET_KEY: str = Field(
         default="dev-only-not-for-production-min-32-chars-XXXX",
         min_length=32,
     )
     JWT_ALGORITHM: JWT_ALLOWED_ALGS = "HS256"
-    JWT_EXPIRY_MINUTES: int = Field(default=15, ge=1, le=60 * 24)  # durée de vie du token d'accès (courte, 15 min)
-    JWT_REFRESH_EXPIRY_MINUTES: int = Field(default=60 * 24, ge=1, le=60 * 24 * 30)  # durée de vie du refresh token (plus longue)
-    JWT_ACCESS_LEEWAY_SECONDS: int = Field(default=30, ge=0, le=300)  # tolérance d'horloge entre serveurs
-    JWT_ISSUER: str = "smart-siem"  # valeur "iss" attendue dans le token
-    JWT_AUDIENCE: str = "smart-siem-api"  # valeur "aud" attendue dans le token
+    JWT_EXPIRY_MINUTES: int = Field(default=480, ge=1, le=60 * 24)       # 8 h
+    JWT_REFRESH_EXPIRY_MINUTES: int = Field(default=60 * 24 * 7, ge=1, le=60 * 24 * 30)  # 7 j
+    JWT_ACCESS_LEEWAY_SECONDS: int = Field(default=30, ge=0, le=300)
+    JWT_ISSUER: str = "smart-siem"
+    JWT_AUDIENCE: str = "smart-siem-api"
 
-    # ── MFA (NFR-SEC-02, défense en profondeur) ─────────────────────────
-    MFA_REQUIRED: bool = False  # si True, tous les utilisateurs doivent activer la double authentification
-    MFA_ISSUER: str = "SmartSIEM"  # nom affiché dans l'application d'authentification (Google Authenticator, etc.)
-    MFA_TOTP_DIGITS: int = Field(default=6, ge=6, le=8)  # nombre de chiffres du code TOTP
-    MFA_TOTP_PERIOD: int = Field(default=30, ge=15, le=120)  # durée de validité d'un code TOTP, en secondes
+    # ── MFA (NFR-SEC-02, défense en profondeur) ──────────────────────
+    MFA_REQUIRED: bool = False
+    MFA_ISSUER: str = "SmartSIEM"
+    MFA_TOTP_DIGITS: int = Field(default=6, ge=6, le=8)
+    MFA_TOTP_PERIOD: int = Field(default=30, ge=15, le=120)
 
-    # ── Politique mot de passe (NFR-SEC-03) ─────────────────────────────
+    # ── Rate limit (slowapi) ────────────────────────────────────────
+    RATE_LIMIT_DEFAULT: str = "100/minute"
+    RATE_LIMIT_LOGIN: str = "5/minute"
+    RATE_LIMIT_LOGIN_BURST: str = "10/hour"
+    RATE_LIMIT_STORAGE_URI: str = "redis://localhost:6379/1"
+
+    # ── Politique mot de passe (NFR-SEC-03) ─────────────────────────
     PASSWORD_MIN_LENGTH: int = Field(default=12, ge=8)
     PASSWORD_MAX_LENGTH: int = Field(default=128, ge=8, le=4096)
     PASSWORD_REQUIRE_UPPER: bool = True   # au moins une majuscule
@@ -133,22 +129,22 @@ class Settings(BaseSettings):
     PASSWORD_REQUIRE_SYMBOL: bool = True  # au moins un caractère spécial
     PASSWORD_HISTORY_SIZE: int = Field(default=5, ge=0, le=50)  # interdit de réutiliser un des N derniers mots de passe
 
-    # ── SOAR / actions réseau (RF-SEC-05) ────────────────────────────────
-    # SOAR = Security Orchestration, Automation and Response : les actions automatiques
-    # prises en réponse à une alerte (ex: bloquer une IP suspecte).
-    BLOCK_IP_DRY_RUN: bool = True  # si True, on simule le blocage d'IP sans l'appliquer réellement (mode "test")
-    BLOCK_IP_MAX_PER_HOUR: int = Field(default=50, ge=1, le=10_000)  # garde-fou anti-emballement
-    BLOCK_IP_REQUIRE_APPROVAL_BELOW: Literal["INFO", "WARNING", "HIGH", "CRITICAL"] = "CRITICAL"  # sévérité minimale pour bloquer sans validation humaine
-    SOAR_REQUIRE_APPROVAL: bool = True  # une action SOAR doit être validée par un humain avant exécution
-    SOAR_KILL_SWITCH: bool = False  # interrupteur d'urgence : coupe toutes les actions SOAR automatiques
-    SOAR_ALLOW_PRIVATE_NETWORKS: bool = False  # interdit par défaut de bloquer des IP privées (RFC1918 / loopback)
-    SOAR_MIN_AUTO_LEVEL: Literal["INFO", "WARNING", "HIGH", "CRITICAL"] = "CRITICAL"  # sévérité minimale pour déclencher une action automatique
-    SOAR_DRY_RUN: bool = True  # mode simulation global pour le SOAR
+    # ── Account lockout (NFR-SEC-04) ────────────────────────────────
+    ACCOUNT_LOCKOUT_THRESHOLD: int = Field(default=5, ge=1, le=50)
+    ACCOUNT_LOCKOUT_DURATION_MIN: int = Field(default=15, ge=1, le=24 * 60)
 
-    # ── Headers sécurité (NFR-SEC-05) ────────────────────────────────────
-    HSTS_MAX_AGE: int = 31_536_000  # durée en secondes pendant laquelle le navigateur doit forcer HTTPS (1 an)
-    # Content-Security-Policy : restreint strictement d'où peuvent venir scripts/styles/images
-    # pour limiter les attaques XSS (cross-site scripting).
+    # ── SOAR / actions réseau (RF-SEC-05) ───────────────────────────
+    BLOCK_IP_DRY_RUN: bool = True
+    BLOCK_IP_MAX_PER_HOUR: int = Field(default=50, ge=1, le=10_000)
+    BLOCK_IP_REQUIRE_APPROVAL_BELOW: Literal["INFO", "WARNING", "HIGH", "CRITICAL"] = "CRITICAL"
+    SOAR_REQUIRE_APPROVAL: bool = True
+    SOAR_KILL_SWITCH: bool = False
+    SOAR_ALLOW_PRIVATE_NETWORKS: bool = False  # IP RFC1918 / loopback
+    SOAR_MIN_AUTO_LEVEL: Literal["INFO", "WARNING", "HIGH", "CRITICAL"] = "CRITICAL"
+    SOAR_DRY_RUN: bool = True
+
+    # ── Headers sécurité (NFR-SEC-05) ──────────────────────────────
+    HSTS_MAX_AGE: int = 31_536_000  # 1 an
     CSP_POLICY: str = (
         "default-src 'self'; "       # par défaut, seules les ressources du même domaine sont autorisées
         "script-src 'self'; "        # scripts uniquement depuis notre propre domaine
@@ -159,31 +155,26 @@ class Settings(BaseSettings):
         "form-action 'self'"        # les formulaires ne peuvent soumettre que vers notre propre domaine
     )
 
-    # ── Elasticsearch ────────────────────────────────────────────────────
-    ELASTICSEARCH_HOST: str = "https://elasticsearch:9200"
+    # ── Elasticsearch ───────────────────────────────────────────────
+    ELASTICSEARCH_HOST: str = "https://primate-stabilize-yin.ngrok-free.dev"
     ELASTICSEARCH_USERNAME: str = "elastic"
-    ELASTICSEARCH_PASSWORD: str = "8-0Il66xvSeGnK=COySu"  # NB: valeur de dev, doit être surchargée en prod via l'environnement
-    ELASTICSEARCH_TLS_VERIFY: bool = True  # vérifie le certificat TLS d'Elasticsearch (à ne jamais désactiver en prod)
-    ELASTICSEARCH_CA_CERTS: Optional[str] = "http_ca.crt"  # chemin du certificat d'autorité de certification (CA)
-    ELASTICSEARCH_REQUEST_TIMEOUT: int = 10  # délai maximum d'attente d'une requête ES, en secondes
-    ELASTICSEARCH_MAX_RETRIES: int = 2  # nombre de tentatives en cas d'échec réseau
+    ELASTICSEARCH_PASSWORD: str = "8-0Il66xvSeGnK=COySu"
+    ELASTICSEARCH_TLS_VERIFY: bool = True
+    ELASTICSEARCH_CA_CERTS: Optional[str] = None
+    ELASTICSEARCH_REQUEST_TIMEOUT: int = 5
+    ELASTICSEARCH_MAX_RETRIES: int = 0
 
-    @field_validator("ELASTICSEARCH_CA_CERTS")
-    @classmethod
-    def _resolve_ca_certs_path(cls, v: Optional[str]) -> Optional[str]:
-        """Résout un chemin relatif par rapport à ce module plutôt qu'au cwd du process.
+    # ── Redis ───────────────────────────────────────────────────────
+    REDIS_HOST: str = "redis"
+    REDIS_PORT: int = 6379
+    REDIS_PASSWORD: Optional[str] = None
+    REDIS_TLS: bool = False
+    REDIS_CA_CERTS: Optional[str] = None
+    REDIS_STREAM_KEY: str = "siem:logs:raw"
+    REDIS_STREAM_MAXLEN: int = Field(default=1_000_000, ge=1_000)
+    REDIS_MESSAGE_MAX_BYTES: int = Field(default=65_536, ge=256, le=1_048_576)
 
-        Un chemin relatif (ex: valeur par défaut "http_ca.crt") ne doit pas dépendre
-        de l'endroit d'où le process a été lancé (uvicorn depuis /app, pytest depuis
-        la racine du repo, etc.) : le certificat est toujours copié à côté de ce
-        fichier (backend/app/), donc on résout explicitement par rapport à lui.
-        """
-        if not v or Path(v).is_absolute():
-            return v
-        resolved = Path(__file__).resolve().parent / v
-        return str(resolved) if resolved.exists() else v
-
-    # ── Notifications (RF-NOT-01..04) ───────────────────────────────────
+    # ── Notifications (RF-NOT-01..04) ───────────────────────────────
     SMTP_HOST: str = ""
     SMTP_PORT: int = 587
     SMTP_USER: str = ""
@@ -195,11 +186,11 @@ class Settings(BaseSettings):
     PAGERDUTY_ROUTING_KEY: str = ""  # clé de routage pour déclencher un incident PagerDuty
     WEBHOOK_REQUIRE_HTTPS: bool = True  # interdit les webhooks en http:// (non chiffré)
 
-    # ── Rétention / divers ───────────────────────────────────────────────
-    LOG_RETENTION_DAYS: int = Field(default=30, ge=1, le=3650)  # durée de conservation des logs avant suppression
-    CORRELATION_POLL_SECONDS: int = Field(default=5, ge=1, le=600)  # fréquence d'exécution du moteur de corrélation
+    # ── Rétention / divers ──────────────────────────────────────────
+    LOG_RETENTION_DAYS: int = Field(default=30, ge=1, le=3650)
+    CORRELATION_POLL_SECONDS: int = Field(default=5, ge=1, le=600)
 
-    # ── Validateur de cohérence (prod-guard) ─────────────────────────────
+    # ── Validateur de cohérence (prod-guard) ───────────────────────
     @model_validator(mode="after")
     def validate_prod(self) -> "Settings":
         """Bloque les configurations dangereuses en production."""
@@ -221,7 +212,7 @@ class Settings(BaseSettings):
         if not self.ELASTICSEARCH_HOST.startswith("https://"):
             raise ValueError("APP_ENV=prod exige ELASTICSEARCH_HOST en https://.")
 
-        # 3. Docs OpenAPI : désactivés en prod (sinon on expose publiquement la structure de l'API)
+        # 3. Docs OpenAPI : désactivés en prod
         if self.DOCS_ENABLED:
             raise ValueError(
                 "APP_ENV=prod interdit avec DOCS_ENABLED=true. "
@@ -242,12 +233,18 @@ class Settings(BaseSettings):
         if self.SLACK_WEBHOOK_URL and not self.SLACK_WEBHOOK_URL.startswith("https://"):
             raise ValueError("SLACK_WEBHOOK_URL doit être HTTPS en production.")
 
+        # 7. Redis : mot de passe obligatoire en prod
+        if not self.REDIS_PASSWORD:
+            raise ValueError("REDIS_PASSWORD obligatoire en production.")
+        if not self.REDIS_TLS:
+            raise ValueError("APP_ENV=prod exige REDIS_TLS=true pour chiffrer les communications Redis.")
+
         return self
 
 
-# ─────────────────────────────────────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────────────────
 # Singleton
-# ─────────────────────────────────────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────────────────
 
 # Instance unique, construite une seule fois au chargement du module.
 # Tout le reste de l'application importe `settings` depuis ce module plutôt que

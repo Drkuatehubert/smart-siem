@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   Sun,
   Moon,
@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import type { UserRole } from "../types";
 import { getRoleBadgeStyles, type ModuleID } from "../utils/rbac";
+import api from "../Services/api";
 
 interface HeaderProps {
   isDarkMode: boolean;
@@ -39,40 +40,34 @@ export default function Header({
   const [showNotifications, setShowNotifications] = useState(false);
   const [showRoleSelector, setShowRoleSelector] = useState(false);
 
-  const [notificationsList, setNotificationsList] = useState([
+  const [notificationsList, setNotificationsList] = useState<
     {
-      id: 1,
-      title: "Brute Force SSH",
-      desc: "srv-prod-web-01 ciblé par 185.220.101.5",
-      time: "Il y a 2 min",
-      type: "high",
-      targetModule: "incidents" as ModuleID,
-    },
-    {
-      id: 2,
-      title: "Malware CobaltStrike",
-      desc: "Fichier suspect détecté sur pc-marketing-01",
-      time: "Il y a 5 min",
-      type: "critical",
-      targetModule: "incidents" as ModuleID,
-    },
-    {
-      id: 3,
-      title: "Anomalie de données",
-      desc: "Transfert de 14.5 Go suspect par j.martin",
-      time: "Il y a 9 min",
-      type: "critical",
-      targetModule: "ueba" as ModuleID,
-    },
-    {
-      id: 4,
-      title: "Mise à jour CVE-2024-3094",
-      desc: "Actif vulnérable srv-prod-web-01 détecté",
-      time: "Il y a 20 min",
-      type: "medium",
-      targetModule: "vuln" as ModuleID,
-    },
-  ]);
+      id: string;
+      title: string;
+      desc: string;
+      time: string;
+      type: string;
+      targetModule: ModuleID;
+    }[]
+  >([]);
+
+  useEffect(() => {
+    api
+      .getAlerts()
+      .then((alerts) => {
+        setNotificationsList(
+          alerts.slice(0, 8).map((alert) => ({
+            id: alert.id,
+            title: alert.title,
+            desc: `${alert.level.toUpperCase()} — ${alert.status}`,
+            time: new Date(alert.triggered_at).toLocaleString("fr-FR"),
+            type: alert.level,
+            targetModule: "incidents" as ModuleID,
+          })),
+        );
+      })
+      .catch(() => setNotificationsList([]));
+  }, []);
 
   const rolesList: { id: UserRole; label: string; desc: string }[] = [
     {
@@ -318,14 +313,10 @@ export default function Header({
           </div>
           <div className="hidden md:block">
             <h4 className="text-xs font-semibold text-slate-800 dark:text-slate-200">
-              {activeRole === "admin"
-                ? "Pierre Durand"
-                : activeRole === "analyst"
-                  ? "Jean Dupont"
-                  : "Auditeur Externe"}
+              {localStorage.getItem('siem_username') || localStorage.getItem('siem_email') || activeRole}
             </h4>
-            <p className="text-[9px] font-mono text-slate-400 tracking-wider">
-              IP: 192.168.1.50
+            <p className="text-[9px] font-mono text-slate-400 tracking-wider uppercase">
+              {activeRole}
             </p>
           </div>
         </div>

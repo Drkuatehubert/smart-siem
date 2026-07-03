@@ -279,8 +279,8 @@ export default function IncidentsView({ activeRole }: IncidentsViewProps) {
                         className="px-2.5 py-1.5 rounded-lg border text-xs bg-white dark:bg-slate-950 border-slate-200 dark:border-slate-800 text-slate-800 dark:text-slate-200 focus:outline-none"
                       >
                         <option value="Non assigné">Non assigné</option>
-                        <option value="Jean Dupont (SOC)">
-                          Jean Dupont (SOC)
+                        <option value="Analyste SOC 1">
+                          Analyste SOC 1
                         </option>
                         <option value="Sophie Bernard (SOC)">
                           Sophie Bernard (SOC)

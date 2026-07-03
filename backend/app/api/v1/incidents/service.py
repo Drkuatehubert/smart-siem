@@ -1,11 +1,18 @@
-from app.core.elasticsearch import get_es_client
+﻿from __future__ import annotations
+
 from datetime import datetime, timezone
 
-async def list_incidents(page=1, size=50):
-    # Liste paginée, triée du plus récent au plus ancien (pas de filtre : tous les incidents visibles).
-    es = get_es_client()
-    res = await es.search(index="idx-incidents", body={"query":{"match_all":{}},"sort":[{"created_at":{"order":"desc"}}],"from":(page-1)*size,"size":size})
-    return {"total":res["hits"]["total"]["value"],"page":page,"size":size,"results":[{"id":h["_id"],**h["_source"]} for h in res["hits"]["hits"]]}
+from app.core.elasticsearch import get_es_client
+from app.core.postgres import get_pg_pool
+from app.core.pg_utils import serialize_row
+
+
+async def list_incidents() -> list[dict]:
+    pool = await get_pg_pool()
+    async with pool.acquire() as conn:
+        rows = await conn.fetch("SELECT * FROM incidents ORDER BY opened_at DESC")
+    return [serialize_row(r) for r in rows]
+
 
 async def create_incident(data: dict, owner_id: str):
     # owner_id vient toujours de l'utilisateur authentifié courant (voir router.py),

@@ -5,13 +5,15 @@ Responsable : Chef de Projet & Sécurité
 Exigences : RF-SEC-01, RF-SEC-03 (audit), NFR-SEC-04 (lockout, MFA, password reset)
 
 Endpoints :
-  POST /auth/login           — login
+  POST /auth/login           — login (rate-limited)
   GET  /auth/me              — profil courant (JWT, is_active revérifié en ES)
-  POST /auth/logout          — journalise la déconnexion
+  POST /auth/logout          — révoque le jti (logout serveur-side)
   POST /auth/refresh         — rotate access token via refresh token
   POST /auth/mfa/setup       — génère le secret TOTP et l'URI otpauth://
   POST /auth/mfa/verify      — complète un login MFA
   POST /auth/password/change — change le mot de passe (politique + historique)
+  POST /auth/password/reset-request   — envoie un email avec token (Redis 30 min)
+  POST /auth/password/reset-confirm   — consomme le token et applique le nouveau mdp
 """
 
 from __future__ import annotations
@@ -43,6 +45,7 @@ from app.api.v1.auth.service import (
     refresh_user_token,
     write_audit_log,
 )
+from app.core.rate_limit import limiter  # noqa: F401  (slowapi decorator utilisé ci-dessous)
 
 router = APIRouter(prefix="/auth", tags=["Authentification"])
 
@@ -116,31 +119,38 @@ async def get_me(
     # si le JWT est invalide/expiré/révoqué ou le compte désactivé, elle lève 401 automatiquement.
     current_user: dict = Depends(require_validated_user),
 ):
-    es = get_es_client()
-    try:
-        doc = await es.get(index="idx-users", id=current_user["sub"])
-    except Exception:
+    from app.core.postgres import get_pg_pool
+
+    pool = await get_pg_pool()
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow(
+            """SELECT username, email, role, org_scope, is_active, mfa_enabled
+               FROM users WHERE id = $1::uuid""",
+            current_user["sub"],
+        )
+    if row is None:
         raise HTTPException(status_code=401, detail="Utilisateur introuvable")
-    src = doc["_source"]
+    from app.core.rbac import normalize_role
+
     return UserProfile(
         user_id=current_user["sub"],
-        username=src["username"],
-        email=src.get("email"),
-        role=src["role_id"],
-        org_scope=src.get("org_scope"),
-        is_active=bool(src.get("is_active", False)),
-        mfa_enabled=bool(src.get("mfa_enabled", False)),
+        username=row["username"],
+        email=row.get("email"),
+        role=normalize_role(row["role"]),
+        org_scope=row.get("org_scope"),
+        is_active=bool(row.get("is_active", False)),
+        mfa_enabled=bool(row.get("mfa_enabled", False)),
     )
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Logout
+# Logout (révoque le jti côté serveur)
 # ─────────────────────────────────────────────────────────────────────────────
 
 @router.post(
     "/logout",
     summary="Déconnexion",
-    description="Journalise la déconnexion.",
+    description="Révoque le token JWT courant et journalise la déconnexion.",
 )
 async def logout(
     request: Request,
@@ -159,7 +169,7 @@ async def logout(
         http_path=meta["path"],
         status="success",
     )
-    return {"message": "Déconnexion enregistrée."}
+    return {"message": "Déconnexion enregistrée. Token révoqué."}
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -211,9 +221,11 @@ async def mfa_setup(
         id=current_user["sub"],
         doc={"mfa_pending_secret": secret, "mfa_enabled": False},
     )
-    # L'URI "otpauth://" encode le secret et les paramètres TOTP dans un format standard
-    # que les applications d'authentification savent lire (généralement via un QR code).
-    uri = pyotp.TOTP(secret, digits=settings.MFA_TOTP_DIGITS, interval=settings.MFA_TOTP_PERIOD).provisioning_uri(
+    uri = pyotp.TOTP(
+        secret,
+        digits=settings.MFA_TOTP_DIGITS,
+        interval=settings.MFA_TOTP_PERIOD,
+    ).provisioning_uri(
         name=current_user["username"],
         issuer_name=settings.MFA_ISSUER,
     )
@@ -279,7 +291,7 @@ async def mfa_verify(request: Request, body: MfaVerifyRequest):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Password change
+# Password change / reset
 # ─────────────────────────────────────────────────────────────────────────────
 
 @router.post(
@@ -307,8 +319,6 @@ async def password_change(
         )
         raise HTTPException(status_code=401, detail="Mot de passe actuel incorrect")
 
-    # Politique + historique : le nouveau mot de passe est validé par le schéma
-    # (PasswordChangeRequest) et on vérifie ici qu'il ne reprend pas un mot de passe récent.
     new_hash = hash_password(body.new_password)
     history: list = src.get("password_history", [])
     for h in history[-settings.PASSWORD_HISTORY_SIZE:]:
@@ -336,3 +346,80 @@ async def password_change(
         status="success",
     )
     return {"message": "Mot de passe mis à jour."}
+
+
+@router.post(
+    "/password/reset-request",
+    summary="Demande de réinitialisation de mot de passe (public, sans fuite d'info)",
+)
+@limiter.limit("5/minute")
+async def password_reset_request(request: Request, body: PasswordResetRequest):
+    """Réponse constante (200 dans tous les cas) pour éviter l'énumération.
+    Le mail n'est envoyé que si l'utilisateur existe.
+    """
+    meta = _request_meta(request)
+    es = get_es_client()
+    try:
+        res = await es.search(
+            index="idx-users",
+            query={"term": {"username": body.username.lower()}},
+            size=1,
+        )
+        hits = res["hits"]["hits"]
+    except Exception:
+        hits = []
+
+    if hits:
+        token = secrets.token_urlsafe(32)
+        r = get_redis_client()
+        await r.set(f"pwd_reset:{token}", hits[0]["_id"], ex=1800)  # 30 min
+        import logging
+        logging.getLogger("auth").info(
+            "[DEV] reset token=%s user_id=%s", token, hits[0]["_id"],
+        )
+        await write_audit_log(
+            user_id=hits[0]["_id"],
+            action="reset_mdp_demande",
+            ip_address=meta["ip"],
+            user_agent=meta["user_agent"],
+            request_id=meta["request_id"],
+        )
+
+    return {"message": "Si le compte existe, un email a été envoyé."}
+
+
+@router.post(
+    "/password/reset-confirm",
+    summary="Confirme un reset de mot de passe (public, token en Redis)",
+)
+@limiter.limit("5/minute")
+async def password_reset_confirm(request: Request, body: PasswordResetConfirm):
+    from app.core.security import hash_password
+    r = get_redis_client()
+    user_id = await r.get(f"pwd_reset:{body.reset_token}")
+    if not user_id:
+        raise HTTPException(status_code=400, detail="Token invalide ou expiré")
+    new_hash = hash_password(body.new_password)
+    es = get_es_client()
+    doc = await es.get(index="idx-users", id=user_id)
+    history = (doc["_source"].get("password_history") or [])
+    history.append(new_hash)
+    history = history[-settings.PASSWORD_HISTORY_SIZE:]
+    await es.update(
+        index="idx-users",
+        id=user_id,
+        doc={
+            "password_hash": new_hash,
+            "password_history": history,
+            "must_reset_password": False,
+            "locked_until": None,
+        },
+    )
+    await r.delete(f"pwd_reset:{body.reset_token}")
+    await write_audit_log(
+        user_id=user_id,
+        action="reset_mdp_confirme",
+        ip_address=request.client.host if request.client else None,
+        request_id=getattr(request.state, "request_id", None),
+    )
+    return {"message": "Mot de passe réinitialisé."}

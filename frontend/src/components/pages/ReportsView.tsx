@@ -34,65 +34,111 @@ export default function ReportsView({ activeRole }: ReportsViewProps) {
   const [title, setTitle] = useState('');
   const [type, setType] = useState<SecurityReport['type']>('DAILY');
   const [generating, setGenerating] = useState(false);
+  const [pdfLoading, setPdfLoading] = useState(false);
+  const [csvLoading, setCsvLoading] = useState(false);
+
+  const API_URL = (import.meta as any).env.VITE_API_URL || 'http://localhost:8000/api/v1';
+
+  const addReportToHistory = (reportTitle: string, reportType: SecurityReport['type']) => {
+    const analyst = localStorage.getItem('siem_username') || localStorage.getItem('siem_email') || 'Analyste';
+    const entry: SecurityReport = {
+      id: `rpt-${Date.now()}`,
+      title: reportTitle,
+      type: reportType,
+      generated_by: analyst,
+      created_at: new Date().toISOString(),
+      format: 'PDF',
+      size: '~350 KB',
+    };
+    const stored = localStorage.getItem('siem_generated_reports');
+    const prev: SecurityReport[] = stored ? JSON.parse(stored) : [];
+    const updated = [entry, ...prev].slice(0, 50);
+    localStorage.setItem('siem_generated_reports', JSON.stringify(updated));
+    setReports(updated);
+  };
+
+  const downloadPDF = async (reportTitle = 'Rapport de Sécurité (7 jours)', reportType: SecurityReport['type'] = 'WEEKLY') => {
+    setPdfLoading(true);
+    try {
+      const token = localStorage.getItem('siem_jwt_token');
+      const response = await fetch(`${API_URL}/reports/generate?period=7d`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `smart-siem-report-${new Date().toISOString().slice(0, 10)}.pdf`;
+      a.click();
+      URL.revokeObjectURL(url);
+      addReportToHistory(reportTitle, reportType);
+    } catch (err) {
+      console.error('Erreur téléchargement PDF :', err);
+    } finally {
+      setPdfLoading(false);
+    }
+  };
+
+  const exportLogsCSV = async () => {
+    setCsvLoading(true);
+    try {
+      const logs = await api.getLogs();
+      const BOM = '﻿';
+      const header = '"Horodatage","Source IP","Hôte","Action","Sévérité","Utilisateur","Message"\n';
+      const rows = logs.map((l: any) =>
+        [
+          l['@timestamp'] || '',
+          l.source_ip || '',
+          l.host || '',
+          l.event_action || '',
+          l.severity || '',
+          l.username || '',
+          (l.raw_message || '').replace(/"/g, '""'),
+        ]
+          .map((v: string) => `"${v}"`)
+          .join(',')
+      );
+      const csv = BOM + header + rows.join('\n');
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `smart-siem-logs-${new Date().toISOString().slice(0, 10)}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('Erreur export CSV :', err);
+    } finally {
+      setCsvLoading(false);
+    }
+  };
 
   useEffect(() => {
-    async function loadReports() {
+    const stored = localStorage.getItem('siem_generated_reports');
+    if (stored) {
       try {
-        const res = await api.getReports();
-        setReports(res);
-      } catch (err) {
-        console.error('Erreur chargement des rapports', err);
-      } finally {
-        setLoading(false);
+        setReports(JSON.parse(stored));
+      } catch {
+        setReports([]);
       }
     }
-    loadReports();
+    setLoading(false);
   }, []);
 
   const handleGenerate = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!title.trim()) return;
-
     setGenerating(true);
-    try {
-      // Simulate rendering latency
-      await new Promise((resolve) => setTimeout(resolve, 1800));
-      const newRep = await api.generateReport(title, type, 'Dominique', activeRole);
-      setReports((prev) => [newRep, ...prev]);
-      setShowModal(false);
-      setTitle('');
-      setType('DAILY');
-    } catch (err) {
-      console.error('Erreur génération du rapport', err);
-    } finally {
-      setGenerating(false);
-    }
+    setShowModal(false);
+    await downloadPDF(title, type);
+    setTitle('');
+    setType('DAILY');
+    setGenerating(false);
   };
 
   const handleDownloadReport = (rep: SecurityReport) => {
-    // Produce mock text download representing the SIEM report payload
-    const payload = {
-      report_id: rep.id,
-      title: rep.title,
-      type: rep.type,
-      generated_by: rep.generated_by,
-      timestamp: rep.created_at,
-      metrics: {
-        total_logs_analyzed: 457910,
-        unauthorized_ssh_attacks: 1450,
-        mitigated_c2_threats: 4,
-        patching_sla_percentage: '94.2%'
-      },
-      verdict: 'Excellent global stance with minor open vulnerabilities on development machines.'
-    };
-
-    const dataStr = 'data:text/json;charset=utf-8,' + encodeURIComponent(JSON.stringify(payload, null, 2));
-    const dlAnchor = document.createElement('a');
-    dlAnchor.setAttribute('href', dataStr);
-    dlAnchor.setAttribute('download', `${rep.title.replace(/\s+/g, '_')}_${rep.id}.json`);
-    document.body.appendChild(dlAnchor);
-    dlAnchor.click();
-    dlAnchor.remove();
+    downloadPDF(rep.title, rep.type);
   };
 
   if (loading) {
@@ -134,6 +180,34 @@ export default function ReportsView({ activeRole }: ReportsViewProps) {
               className="pl-9 pr-4 py-2 w-52 rounded-lg border text-xs bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-850 text-slate-800 dark:text-slate-200 focus:outline-none"
             />
           </div>
+
+          <button
+            onClick={downloadPDF}
+            disabled={pdfLoading}
+            className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 disabled:opacity-60 text-white font-bold text-xs transition-all active:scale-95 cursor-pointer shadow-md"
+            title="Génère un rapport PDF professionnel depuis les données en temps réel"
+          >
+            {pdfLoading ? (
+              <Download className="w-4 h-4 animate-bounce" />
+            ) : (
+              <Download className="w-4 h-4" />
+            )}
+            <span>{pdfLoading ? 'Génération...' : '📄 Rapport PDF (7j)'}</span>
+          </button>
+
+          <button
+            onClick={exportLogsCSV}
+            disabled={csvLoading}
+            className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:opacity-60 text-white font-bold text-xs transition-all active:scale-95 cursor-pointer shadow-md"
+            title="Exporte tous les logs disponibles au format CSV (compatible Excel)"
+          >
+            {csvLoading ? (
+              <Database className="w-4 h-4 animate-pulse" />
+            ) : (
+              <Database className="w-4 h-4" />
+            )}
+            <span>{csvLoading ? 'Export...' : '📊 Exporter logs CSV'}</span>
+          </button>
 
           <button
             onClick={() => setShowModal(true)}

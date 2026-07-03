@@ -3,10 +3,11 @@ from pydantic import BaseModel
 from typing import Optional
 import uuid
 import re
+import json
 import uvicorn
 
-
 import os
+import redis as redis_lib
 
 from elasticsearch import Elasticsearch
 from datetime import datetime, timezone
@@ -23,6 +24,25 @@ es = Elasticsearch(
     ca_certs=_ES_CA,
     verify_certs=_ES_VERIFY,
 )
+
+_REDIS_HOST = os.environ.get("REDIS_HOST", "redis")
+_REDIS_PORT = int(os.environ.get("REDIS_PORT", "6379"))
+_redis: redis_lib.Redis | None = None
+
+
+def get_redis() -> redis_lib.Redis | None:
+    global _redis
+    try:
+        if _redis is None:
+            _redis = redis_lib.Redis(
+                host=_REDIS_HOST, port=_REDIS_PORT, db=0,
+                decode_responses=True, socket_timeout=2,
+            )
+        return _redis
+    except Exception as exc:
+        print(f"[REDIS INIT ERREUR] {exc}", flush=True)
+        return None
+
 
 app = FastAPI(title="Log Normalizer — Smart SIEM UCAC-ICAM")
 
@@ -158,11 +178,11 @@ def extraire_action(message: str) -> Optional[str]:
 
     # ── SSH / Auth ────────────────────────────────────────────────────────────
     if "invalid user" in msg:
-        return "invalid_user"
+        return "login_failed"
     if "failed password" in msg or "authentication failure" in msg:
-        return "ssh_auth_failure"
+        return "login_failed"
     if "accepted password" in msg or "accepted publickey" in msg:
-        return "ssh_auth_success"
+        return "login_success"
     if "session opened" in msg:
         return "session_opened"
     if "session closed" in msg:
@@ -192,7 +212,7 @@ def extraire_action(message: str) -> Optional[str]:
 
     # ── Windows EventIDs ──────────────────────────────────────────────────────
     if "eventid 4625" in msg or "échec de connexion" in msg:
-        return "ssh_auth_failure"
+        return "login_failed"
     if "eventid 4624" in msg or "connexion réussie" in msg:
         m = re.search(r'0x3e7\s*\|\s*(\d+)\s*\|', message)
         if m:
@@ -200,12 +220,12 @@ def extraire_action(message: str) -> Optional[str]:
             if logon_type == "10":
                 return "rdp_connection"
             if logon_type == "3":
-                return "network_logon"
+                return "login_success"
             if logon_type == "2":
-                return "interactive_logon"
+                return "login_success"
             if logon_type == "5":
-                return "service_logon"
-        return "ssh_auth_success"
+                return "login_success"
+        return "login_success"
     if "eventid 4648" in msg:
         return "privilege_escalation"
     if "eventid 4740" in msg or "compte verrouillé" in msg:
@@ -259,8 +279,10 @@ def extraire_action(message: str) -> Optional[str]:
 def envoyer_vers_es(log_normalise: dict):
     """Indexe le log normalisé dans Elasticsearch."""
     try:
+        mois_courant = datetime.now(timezone.utc).strftime("%Y.%m")
+        index_name = f"siem-logs-{mois_courant}"
         es.index(
-            index="idx-logs",
+            index=index_name,
             document={
                 "@timestamp":   log_normalise["horodatage"],
                 "raw_log_id":   log_normalise["id_es"],
@@ -304,6 +326,58 @@ def normaliser(log: dict) -> dict:
     }
 
 # ============================================================================
+# Stockage Redis (fallback ES + statut agents)
+# ============================================================================
+
+def _detect_os(host: str) -> str:
+    h = (host or "").lower()
+    if "128" in h or "ubuntu" in h or "linux" in h:
+        return "Ubuntu"
+    if "129" in h or "windows" in h or "desktop" in h or "win" in h:
+        return "Windows"
+    return "Linux"
+
+
+def stocker_dans_redis(log_normalise: dict, logs_count: int = 1) -> None:
+    """Pousse le log dans recent_logs et met à jour le heartbeat agent:*."""
+    try:
+        r = get_redis()
+        if r is None:
+            return
+
+        host = log_normalise.get("hote") or "unknown"
+        ip   = log_normalise.get("ip_source") or "unknown"
+
+        # Log récent au format ES — fallback quand ES est hors ligne
+        log_es = {
+            "@timestamp":   log_normalise.get("horodatage"),
+            "source_ip":    log_normalise.get("ip_source"),
+            "host":         log_normalise.get("hote"),
+            "event_action": log_normalise.get("action_evenement"),
+            "severity":     log_normalise.get("severite"),
+            "raw_message":  log_normalise.get("message_brut"),
+            "username":     log_normalise.get("nom_utilisateur"),
+        }
+        r.lpush("recent_logs", json.dumps(log_es, ensure_ascii=False))
+        r.ltrim("recent_logs", 0, 499)
+
+        # Heartbeat agent (expire automatiquement en 5 min)
+        r.set(
+            f"agent:{host}",
+            json.dumps({
+                "host":       host,
+                "ip":         ip,
+                "last_seen":  datetime.now(timezone.utc).isoformat(),
+                "os":         _detect_os(host),
+                "logs_count": logs_count,
+            }),
+            ex=300,
+        )
+    except Exception as exc:
+        print(f"[REDIS ERREUR] {exc}", flush=True)
+
+
+# ============================================================================
 # Endpoints
 # ============================================================================
 
@@ -311,16 +385,21 @@ def normaliser(log: dict) -> dict:
 def normalizer_endpoint(log: LogBrut):
     normalise = normaliser(log.model_dump())
     envoyer_vers_es(normalise)
+    stocker_dans_redis(normalise, 1)
     print(f"[NORMALISE] action={normalise.get('action_evenement')} ip={normalise.get('ip_source')}", flush=True)
     return normalise
 
 @app.post("/normalize/batch")
 def normalizer_batch(logs: list[LogBrut]):
     resultats = []
+    host_counts: dict[str, int] = {}
     for log in logs:
         normalise = normaliser(log.model_dump())
-        print(f"[NORMALISE] {normalise}", flush=True)
-        envoyer_vers_es(normalise)    # ← envoyer vers ES
+        envoyer_vers_es(normalise)
+        host = normalise.get("hote") or "unknown"
+        host_counts[host] = host_counts.get(host, 0) + 1
+        stocker_dans_redis(normalise, host_counts[host])
+        print(f"[NORMALISE] action={normalise.get('action_evenement')} host={host}", flush=True)
         resultats.append(normalise)
     return resultats
 

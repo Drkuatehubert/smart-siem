@@ -15,6 +15,7 @@ networks:
 
 volumes:
   redisdata:
+  reports:
   pgdata:
 
 services:
@@ -63,18 +64,18 @@ services:
       retries: 5
     restart: unless-stopped
 
-  # PostgreSQL : stockage relationnel du moteur de corrélation (correlation_engine/) —
-  # règles, alertes, playbooks. Séparé d'Elasticsearch qui reste la source des logs bruts/normalisés.
+  # ── Base de données PostgreSQL (moteur de corrélation) ──────────────────────
+
   postgres:
     image: postgres:16-alpine
     container_name: siem-postgres
     environment:
-      - POSTGRES_DB=smartsiem
-      - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: nafeh
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: felicia
     volumes:
       - pgdata:/var/lib/postgresql/data
-      - ./correlation_engine/db:/docker-entrypoint-initdb.d:ro
+      - ./temp-data/bd_schema/01_postgres_schema.sql:/docker-entrypoint-initdb.d/init.sql:ro
     ports:
       - "5432:5432"
     networks:
@@ -94,6 +95,9 @@ services:
       dockerfile: Dockerfile
     container_name: siem-normalizer
     env_file: .env
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
     ports:
       - "8443:443"
     volumes:
@@ -132,12 +136,18 @@ services:
   backend:
     build: ./backend
     container_name: siem-backend
-    env_file: .env
     environment:
       - ELASTICSEARCH_HOST=${ELASTICSEARCH_HOST}
+      - ELASTICSEARCH_USERNAME=${ELASTICSEARCH_USERNAME}
+      - ELASTICSEARCH_PASSWORD=${ELASTICSEARCH_PASSWORD}
+      - ELASTICSEARCH_TLS_VERIFY=false
       - REDIS_HOST=redis
       - REDIS_PORT=6379
       - REDIS_TLS=false
+      - RATE_LIMIT_STORAGE_URI=redis://redis:6379/1
+      - PG_DSN=postgresql://postgres:felicia@postgres:5432/nafeh
+      - JWT_EXPIRY_MINUTES=480
+      - JWT_REFRESH_EXPIRY_MINUTES=10080
     ports:
       - "8000:8000"
     networks:
@@ -145,18 +155,45 @@ services:
     depends_on:
       redis:
         condition: service_healthy
+      postgres:
+        condition: service_healthy
     restart: unless-stopped
 
-  # ── Corrélation MITRE ATT&CK ─────────────────────────────────────────────────
-  # Moteur de corrélation (correlation_engine/) : lit les logs normalisés dans
-  # Elasticsearch (idx-logs), évalue les règles YAML (seedées dans PostgreSQL au
-  # démarrage par seed_rules.py), et écrit les alertes dans PostgreSQL.
+  # ── Moteur de corrélation MITRE ATT&CK ───────────────────────────────────────
+  # context : temp-data/ (contient correlation_engine_2.py + requirements.txt)
+  # dockerfile : ../correlation/Dockerfile (relatif au context)
 
-  correlation-engine:
-    build: ./correlation_engine
-    container_name: siem-correlation-engine
+  correlation:
+    build:
+      context: ./temp-data
+      dockerfile: ../correlation/Dockerfile
+    container_name: siem-correlation
     env_file: .env
     environment:
+      - ES_HOST=${ELASTICSEARCH_HOST}
+      - ES_USER=${ELASTICSEARCH_USERNAME}
+      - ES_PASSWORD=${ELASTICSEARCH_PASSWORD}
+      - PG_DSN=postgresql://postgres:felicia@postgres:5432/nafeh
+    networks:
+      - siem-network
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # ── SOAR Worker ───────────────────────────────────────────────────────────────
+  # Build context = racine pour que "from soar import config" fonctionne.
+
+  soar-worker:
+    build:
+      context: .
+      dockerfile: soar/Dockerfile
+    container_name: siem-soar-worker
+    env_file: .env
+    environment:
+      - CELERY_BROKER=redis://redis:6379/0
       - ES_HOST=${ELASTICSEARCH_HOST}
       - ES_USER=${ELASTICSEARCH_USERNAME:-elastic}
       - ES_PASSWORD=${ELASTICSEARCH_PASSWORD}

@@ -1,22 +1,7 @@
-"""
-schemas.py — Schémas Pydantic pour l'authentification (durcis)
-
-Responsable : Chef de Projet & Sécurité
-Exigences : RF-SEC-01, NFR-SEC-03
-
-Modèles exposés :
-  * LoginRequest, LoginResponseMfa
-  * TokenResponse, TokenWithProfile
-  * RefreshRequest, RefreshResponse
-  * MfaSetupResponse, MfaVerifyRequest
-  * PasswordChangeRequest
-  * UserProfile
-"""
-
 from __future__ import annotations
 
 import re
-from typing import Literal, Optional
+from typing import Optional
 
 from pydantic import BaseModel, EmailStr, Field, field_validator
 
@@ -28,11 +13,10 @@ from pydantic import BaseModel, EmailStr, Field, field_validator
 class LoginRequest(BaseModel):
     """Identifiants soumis par le client. Validation de format seule ;
     l'authentification réelle (lockout, audit, etc.) est dans `service.authenticate_user`.
+    Accepte username ou email (contenant @).
     """
-    # pattern restreint le nom d'utilisateur à des caractères "sûrs" (empêche par
-    # exemple d'y glisser des caractères spéciaux utilisés dans des injections).
-    username: str = Field(..., min_length=3, max_length=50, pattern=r"^[a-zA-Z0-9._-]+$")
-    password: str = Field(..., min_length=1, max_length=4096)  # borne haute anti-DoS (évite un mot de passe gigantesque)
+    username: str = Field(..., min_length=3, max_length=255, pattern=r"^[a-zA-Z0-9._@+%-]+$")
+    password: str = Field(..., min_length=1, max_length=4096)  # borne haute anti-DoS
 
     class Config:
         # Exemple affiché dans la documentation interactive (/docs).
@@ -43,9 +27,6 @@ class LoginRequest(BaseModel):
 
 class UserProfile(BaseModel):
     """Profil public de l'utilisateur (jamais de hash, jamais d'email non validé)."""
-    # Ce modèle définit précisément ce qui peut être renvoyé au client à propos
-    # d'un utilisateur : impossible d'exposer accidentellement le password_hash
-    # puisqu'il n'existe pas comme champ ici.
     user_id: str
     username: str
     email: Optional[EmailStr] = None
@@ -125,8 +106,6 @@ _PASSWORD_POLICY_HINT = (
 
 def _validate_password_strength(value: str) -> str:
     """Vérifie la politique (PASSWORD_*). Lève ValueError si non conforme."""
-    # Import local pour éviter un import circulaire (config est déjà chargé ailleurs,
-    # mais ce module de schémas est importé très tôt dans la chaîne de démarrage).
     from app.config import settings
     if len(value) < settings.PASSWORD_MIN_LENGTH:
         raise ValueError(f"Mot de passe trop court (min {settings.PASSWORD_MIN_LENGTH}).")

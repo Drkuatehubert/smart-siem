@@ -39,7 +39,28 @@ class Role:
     ALL = [LECTEUR, ANALYSTE, ADMINISTRATEUR, AUDITEUR]
 
 
-# ─────────────────────────────────────────────────────────────────────────────
+# Alias rôles PostgreSQL → rôles RBAC canoniques
+_PG_ROLE_ALIASES: dict[str, str] = {
+    "admin": "administrateur",
+    "administrateur": "administrateur",
+    "analyst": "analyste",
+    "analyste": "analyste",
+    "reader": "lecteur",
+    "lecteur": "lecteur",
+    "auditor": "auditeur",
+    "auditeur": "auditeur",
+}
+
+
+def normalize_role(role: str | None) -> str:
+    """Normalise un rôle PG ou JWT vers le vocabulaire RBAC."""
+    if not role:
+        return Role.LECTEUR
+    key = role.strip().lower()
+    return _PG_ROLE_ALIASES.get(key, key)
+
+
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 # Matrice des permissions (RF-SEC-02)
 # ─────────────────────────────────────────────────────────────────────────────
 # Chaque clé est une permission nommée "ressource:action" ; la valeur est la liste

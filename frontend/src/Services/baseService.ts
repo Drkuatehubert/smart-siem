@@ -1,48 +1,29 @@
 // src/Services/baseService.ts
-import { axiosInstance, delay } from './apiClients';
+import { axiosInstance } from './apiClients';
 
 export abstract class BaseService {
   protected client = axiosInstance;
-  
+
   /**
-   * Core central request wrapper with fallback to mock data
+   * Central request wrapper — appelle toujours l'API réelle.
+   * Le 4e paramètre est conservé pour compatibilité ascendante mais ignoré.
    */
   protected async request<T>(
     method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE',
     url: string,
-    data: any,
-    fallbackAction: () => T
+    data?: any,
+    _fallbackAction?: () => T
   ): Promise<T> {
-    const hasConfiguredEndpoint = !!(import.meta as any).env.VITE_API_URL;
-    const forceMock = (import.meta as any).env.VITE_FORCE_MOCK === 'true';
-
-    if (!hasConfiguredEndpoint || forceMock) {
-      return delay(fallbackAction());
-    }
-
-    try {
-      const response = await this.client.request<T>({
-        method,
-        url,
-        data,
-      });
-      return response.data;
-    } catch (error: any) {
-      console.warn(
-        `[SIEM REST API - AUTO-FALLBACK] ${method} ${url} a échoué. Utilisation de la simulation locale.`,
-        error.message || error
-      );
-      return delay(fallbackAction());
-    }
+    const response = await this.client.request<T>({ method, url, data });
+    return response.data;
   }
 
-  // Helper pour les logs d'audit
   protected addAuditLog(
     logs: any[],
-    user: string, 
-    role: string, 
-    action: string, 
-    target: string, 
+    user: string,
+    role: string,
+    action: string,
+    target: string,
     status: 'SUCCESS' | 'FAILED'
   ) {
     const newLog = {
@@ -53,7 +34,7 @@ export abstract class BaseService {
       action,
       target,
       status,
-      ip_address: '192.168.1.50'
+      ip_address: ''
     };
     logs.unshift(newLog);
     return logs;

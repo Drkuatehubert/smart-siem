@@ -60,6 +60,8 @@ export default function AgentsView() {
     return matchesSearch && matchesStatus;
   });
 
+  const totalLogsSent = agents.reduce((sum, a) => sum + (a.logs_sent || 0), 0);
+
   return (
     <div
       id="agents-view"
@@ -147,7 +149,9 @@ export default function AgentsView() {
               <h5 className="text-[10px] font-bold uppercase tracking-wider text-blue-200 font-mono">
                 Volume ingéré (24h)
               </h5>
-              <p className="text-2xl font-extrabold font-mono">1.28M logs</p>
+              <p className="text-2xl font-extrabold font-mono">
+                {totalLogsSent > 0 ? totalLogsSent.toLocaleString('fr-FR') + ' logs' : '—'}
+              </p>
             </div>
             <p className="text-[10px] text-blue-200 leading-normal">
               Collecteurs d'agents synchronisés avec un taux de perte de paquets

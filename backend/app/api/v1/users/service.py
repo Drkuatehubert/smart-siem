@@ -49,52 +49,55 @@ async def list_users(page: int = 1, size: int = 50) -> Dict[str, Any]:
     # Empêche un appelant de demander une page de taille arbitrairement grande
     # (ex: size=1000000), qui surchargerait Elasticsearch et le réseau.
     size = max(1, min(size, 500))
-    es = get_es_client()
-    res = await es.search(
-        index=IDX,
-        query={"match_all": {}},
-        from_=(page - 1) * size,   # pagination classique "offset" (page 1 => from_=0)
-        size=size,
-        _source={"excludes": list(_SENSITIVE)},  # exclut les champs sensibles dès la requête ES (défense en profondeur)
-        sort=[{"created_at": {"order": "desc"}}],  # les plus récents en premier
-    )
+    from app.core.postgres import get_pg_pool
+    from app.core.pg_utils import serialize_row
+
+    offset = (page - 1) * size
+    pool = await get_pg_pool()
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(
+            """SELECT id, username, email, role, mfa_enabled, org_scope, is_active,
+                      last_login_at, failed_login_count, locked_until, created_at, created_by
+               FROM users
+               ORDER BY created_at DESC NULLS LAST
+               LIMIT $1 OFFSET $2""",
+            size,
+            offset,
+        )
+        total = await conn.fetchval("SELECT COUNT(*) FROM users")
     return {
-        "total": res["hits"]["total"]["value"],
+        "total": total,
         "page": page,
         "size": size,
-        "results": [
-            {"id": h["_id"], **_sanitize(dict(h["_source"]))} for h in res["hits"]["hits"]
-        ],
+        "results": [serialize_row(r) for r in rows],
     }
 
 
 async def get_user_by_id(user_id: str) -> Optional[Dict[str, Any]]:
-    es = get_es_client()
-    try:
-        doc = await es.get(index=IDX, id=user_id)
-        return {"id": doc["_id"], **_sanitize(dict(doc["_source"]))}
-    except Exception:
-        # Document introuvable (ou erreur ES) : on renvoie None, à l'appelant de
-        # décider s'il s'agit d'un 404.
-        return None
+    from app.core.postgres import get_pg_pool
+    from app.core.pg_utils import serialize_row
+
+    pool = await get_pg_pool()
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow(
+            """SELECT id, username, email, role, mfa_enabled, org_scope, is_active,
+                      last_login_at, failed_login_count, locked_until, created_at, created_by
+               FROM users WHERE id = $1::uuid""",
+            user_id,
+        )
+    return serialize_row(row) if row else None
 
 
 async def count_active_admins() -> int:
-    # Utilisé pour empêcher de se retrouver sans aucun administrateur actif
-    # (voir garde "last admin" dans update_user/delete_user ci-dessous).
-    es = get_es_client()
-    res = await es.count(
-        index=IDX,
-        query={
-            "bool": {
-                "must": [
-                    {"term": {"role_id": Role.ADMINISTRATEUR}},
-                    {"term": {"is_active": True}},
-                ]
-            }
-        },
-    )
-    return res["count"]
+    from app.core.postgres import get_pg_pool
+
+    pool = await get_pg_pool()
+    async with pool.acquire() as conn:
+        return await conn.fetchval(
+            """SELECT COUNT(*) FROM users
+               WHERE is_active = true
+                 AND LOWER(role) IN ('admin', 'administrateur')"""
+        )
 
 
 # ─────────────────────────────────────────────────────────────────────────────

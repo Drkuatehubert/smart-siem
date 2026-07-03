@@ -22,25 +22,65 @@ import ComplianceView from './components/pages/ComplianceView';
 import AdminView from './components/pages/AdminView';
 
 // RBAC
-// RBAC
 import type { UserRole } from './types';
 import { type ModuleID, RBAC_POLICIES, isModuleAllowed } from './utils/rbac';
 import LoginView from './components/pages/LoginView';
 
+// ─── JWT helpers ─────────────────────────────────────────────────────────────
+
+function decodeJwtPayload(token: string): Record<string, unknown> | null {
+  try {
+    const base64 = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
+    return JSON.parse(atob(base64));
+  } catch {
+    return null;
+  }
+}
+
+function isTokenValid(token: string): boolean {
+  const payload = decodeJwtPayload(token);
+  if (!payload || typeof payload.exp !== 'number') return false;
+  return payload.exp > Date.now() / 1000;
+}
+
+function clearAuthStorage(): void {
+  ['siem_jwt_token', 'siem_refresh_token', 'siem_authenticated', 'siem_role', 'siem_email', 'siem_username']
+    .forEach(k => localStorage.removeItem(k));
+}
+
+// ─── App ─────────────────────────────────────────────────────────────────────
+
 export default function App() {
+  // Initialisation synchrone basée sur le JWT — évite le flash de redirect
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
-    return localStorage.getItem('siem_authenticated') === 'true';
+    const token = localStorage.getItem('siem_jwt_token');
+    if (!token) return false;
+    if (!isTokenValid(token)) {
+      clearAuthStorage();
+      return false;
+    }
+    return true;
   });
+
+  // isLoading reste false (JWT check est synchrone) — gardé pour extensions futures
+  const [isLoading] = useState<boolean>(false);
+
   const [activeModule, setActiveModule] = useState<ModuleID>('dashboard');
+
   const [activeRole, setActiveRole] = useState<UserRole>(() => {
     return (localStorage.getItem('siem_role') as UserRole) || 'reader';
   });
+
   const [userEmail, setUserEmail] = useState<string>(() => {
     return localStorage.getItem('siem_email') || '';
   });
-  const [isDarkMode, setIsDarkMode] = useState<boolean>(true);
 
-  // Sync theme class on <html> element for Tailwind dark utility modes
+  const [isDarkMode, setIsDarkMode] = useState<boolean>(() => {
+    const saved = localStorage.getItem('siem_theme');
+    return saved !== null ? saved === 'dark' : true;
+  });
+
+  // Sync theme class on <html>
   useEffect(() => {
     const root = window.document.documentElement;
     if (isDarkMode) {
@@ -58,58 +98,67 @@ export default function App() {
     }
   }, [isDarkMode]);
 
-  // Reactive Access Guard: if the user switches roles, and their active module is no longer allowed,
-  // automatically redirect them to their first permitted module.
+  // Guard RBAC : redirige vers le premier module autorisé si le rôle change
   useEffect(() => {
     if (!isModuleAllowed(activeRole, activeModule)) {
       const allowed = RBAC_POLICIES[activeRole].allowedModules;
-      if (allowed.length > 0) {
-        setActiveModule(allowed[0]);
-      }
+      if (allowed.length > 0) setActiveModule(allowed[0]);
     }
   }, [activeRole]);
 
-  // Listen for JWT expiration or unauthorized events from the centralized API client
+  // Écoute l'événement 401 émis par apiClients.ts
   useEffect(() => {
-    const handleUnauthorized = () => {
-      handleLogout();
-    };
+    const handleUnauthorized = () => handleLogout();
     window.addEventListener('siem:unauthorized', handleUnauthorized);
-    return () => {
-      window.removeEventListener('siem:unauthorized', handleUnauthorized);
-    };
+    return () => window.removeEventListener('siem:unauthorized', handleUnauthorized);
   }, []);
 
   const toggleTheme = () => {
-    setIsDarkMode(!isDarkMode);
+    setIsDarkMode(prev => {
+      const next = !prev;
+      localStorage.setItem('siem_theme', next ? 'dark' : 'light');
+      return next;
+    });
   };
 
-  const handleLoginSuccess = (role: UserRole, email: string, keepSession: boolean) => {
+  const handleLoginSuccess = (role: UserRole, email: string, _keepSession?: boolean) => {
+    // Toujours persister — le token est déjà dans localStorage via authService.login()
     setIsAuthenticated(true);
     setActiveRole(role);
     setUserEmail(email);
-    if (keepSession) {
-      localStorage.setItem('siem_authenticated', 'true');
-      localStorage.setItem('siem_role', role);
-      localStorage.setItem('siem_email', email);
-    } else {
-      localStorage.removeItem('siem_authenticated');
-      localStorage.removeItem('siem_role');
-      localStorage.removeItem('siem_email');
-    }
+    localStorage.setItem('siem_authenticated', 'true');
+    localStorage.setItem('siem_role', role);
+    localStorage.setItem('siem_email', email);
   };
 
   const handleLogout = () => {
     setIsAuthenticated(false);
     setUserEmail('');
-    localStorage.removeItem('siem_authenticated');
-    localStorage.removeItem('siem_role');
-    localStorage.removeItem('siem_email');
+    clearAuthStorage();
   };
 
-  // Render view safely based on active route state
+  // Spinner pendant la vérification (prévu pour un futur refresh async)
+  if (isLoading) {
+    return (
+      <div className="flex h-screen w-screen items-center justify-center bg-[#0F172A]">
+        <div className="w-6 h-6 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
+
+  if (!isAuthenticated) {
+    return (
+      <LoginView
+        onLoginSuccess={handleLoginSuccess}
+        isDarkMode={isDarkMode}
+        toggleTheme={toggleTheme}
+      />
+    );
+  }
+
+  // ── Render view ────────────────────────────────────────────────────────────
+
   const renderActiveView = () => {
-    // Safety guard
     if (!isModuleAllowed(activeRole, activeModule)) {
       return (
         <div id="rbac-error-boundary" className="p-8 h-full flex flex-col items-center justify-center text-center">
@@ -123,76 +172,48 @@ export default function App() {
     }
 
     switch (activeModule) {
-      case 'dashboard':
-        return <DashboardView />;
-      case 'incidents':
-        return <IncidentsView activeRole={activeRole} />;
-      case 'logs':
-        return <LogsView />;
-      case 'ueba':
-        return <UebaView />;
-      case 'rules':
-        return <RulesView activeRole={activeRole} />;
-      case 'threat_intel':
-        return <ThreatIntelView activeRole={activeRole} />;
-      case 'agents':
-        return <AgentsView />;
-      case 'vuln':
-        return <VulnView activeRole={activeRole} />;
-      case 'playbooks':
-        return <PlaybooksView activeRole={activeRole} />;
-      case 'reports':
-        return <ReportsView activeRole={activeRole} />;
-      case 'compliance':
-        return <ComplianceView activeRole={activeRole} />;
-      case 'admin':
-        return <AdminView activeRole={activeRole} />;
-      default:
-        return <DashboardView />;
+      case 'dashboard':     return <DashboardView />;
+      case 'incidents':     return <IncidentsView activeRole={activeRole} />;
+      case 'logs':          return <LogsView />;
+      case 'ueba':          return <UebaView />;
+      case 'rules':         return <RulesView activeRole={activeRole} />;
+      case 'threat_intel':  return <ThreatIntelView activeRole={activeRole} />;
+      case 'agents':        return <AgentsView />;
+      case 'vuln':          return <VulnView activeRole={activeRole} />;
+      case 'playbooks':     return <PlaybooksView activeRole={activeRole} />;
+      case 'reports':       return <ReportsView activeRole={activeRole} />;
+      case 'compliance':    return <ComplianceView activeRole={activeRole} />;
+      case 'admin':         return <AdminView activeRole={activeRole} />;
+      default:              return <DashboardView />;
     }
   };
 
-  // Human friendly page title and subtitle metadata
   const MODULE_METADATA: Record<ModuleID, { title: string; subtitle: string }> = {
-    dashboard: { title: 'Tableau de bord', subtitle: 'Analyse et métriques globales de sécurité' },
-    incidents: { title: 'Alertes', subtitle: 'Gestion et remédiation des incidents actifs' },
-    logs: { title: 'Investigation', subtitle: 'Analyse de menaces en temps réel' },
-    agents: { title: 'Explorateur de logs', subtitle: 'Télémétrie et collecte d\'agents' },
-    rules: { title: 'Règles', subtitle: 'Corrélation et logique de détection' },
-    playbooks: { title: 'Playbooks SOAR', subtitle: 'Automatisation des réponses aux incidents' },
-    ueba: { title: 'UEBA', subtitle: 'Détection comportementale et anomalies' },
-    reports: { title: 'Rapports', subtitle: 'Générateur de synthèses et rapports d\'audit' },
-    threat_intel: { title: 'Sources', subtitle: 'Threat Intelligence & Flux de menaces' },
-    admin: { title: 'Gestion des utilisateurs', subtitle: 'Administration système et habilitations RBAC' },
-    compliance: { title: 'Paramètres', subtitle: 'Configuration globale et réglages du SIEM' },
-    vuln: { title: 'Logs d\'audit', subtitle: 'Traces d\'activité et conformité règlementaire' },
+    dashboard:   { title: 'Tableau de bord',          subtitle: 'Analyse et métriques globales de sécurité' },
+    incidents:   { title: 'Alertes',                  subtitle: 'Gestion et remédiation des incidents actifs' },
+    logs:        { title: 'Investigation',             subtitle: 'Analyse de menaces en temps réel' },
+    agents:      { title: 'Explorateur de logs',       subtitle: "Télémétrie et collecte d'agents" },
+    rules:       { title: 'Règles',                    subtitle: 'Corrélation et logique de détection' },
+    playbooks:   { title: 'Playbooks SOAR',            subtitle: 'Automatisation des réponses aux incidents' },
+    ueba:        { title: 'UEBA',                      subtitle: 'Détection comportementale et anomalies' },
+    reports:     { title: 'Rapports',                  subtitle: "Générateur de synthèses et rapports d'audit" },
+    threat_intel:{ title: 'Sources',                   subtitle: 'Threat Intelligence & Flux de menaces' },
+    admin:       { title: 'Gestion des utilisateurs',  subtitle: 'Administration système et habilitations RBAC' },
+    compliance:  { title: 'Paramètres',                subtitle: 'Configuration globale et réglages du SIEM' },
+    vuln:        { title: "Logs d'audit",              subtitle: "Traces d'activité et conformité règlementaire" },
   };
 
   const currentMeta = MODULE_METADATA[activeModule] || { title: 'Smart SIEM', subtitle: 'Vigilance & Précision' };
 
-  if (!isAuthenticated) {
-    return (
-      <LoginView
-        onLoginSuccess={handleLoginSuccess}
-        isDarkMode={isDarkMode}
-        toggleTheme={toggleTheme}
-      />
-    );
-  }
-
   return (
     <div id="siem-app-shell" className="flex h-screen w-screen overflow-hidden bg-[#F1F5F9] dark:bg-[#0F172A] text-slate-900 dark:text-slate-100 transition-colors duration-300 font-sans">
-      {/* Sidebar Navigation */}
       <Sidebar
         activeModule={activeModule}
         setActiveModule={setActiveModule}
         activeRole={activeRole}
         onLogout={handleLogout}
       />
-
-      {/* Main Console Area */}
       <div id="main-console-area" className="flex-1 flex flex-col h-full overflow-hidden">
-        {/* Top Control Bar */}
         <Header
           isDarkMode={isDarkMode}
           toggleTheme={toggleTheme}
@@ -202,8 +223,6 @@ export default function App() {
           subtitle={currentMeta.subtitle}
           setActiveModule={setActiveModule}
         />
-
-        {/* View stage wrapper */}
         <main id="console-viewport" className="flex-1 overflow-hidden relative">
           {renderActiveView()}
         </main>

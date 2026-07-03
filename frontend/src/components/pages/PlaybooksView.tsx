@@ -27,6 +27,75 @@ interface PlaybooksViewProps {
   activeRole: UserRole;
 }
 
+const PLAYBOOKS_FALLBACK: Playbook[] = [
+  {
+    id: "pb-001",
+    name: "Blocage IP automatique (pfSense)",
+    description:
+      "Bloque automatiquement l'adresse IP source via pfSense (SSH + paramiko). " +
+      "Déclenché dès détection d'une alerte HIGH/CRITICAL contenant un source_ip. " +
+      "Commande : pfctl -t blocklist -T add {ip} sur 192.168.100.254.",
+    action_type: "block_ip",
+    execution_mode: "AUTO",
+    parameters: {
+      method: "pfSense SSH (paramiko)",
+      command: "pfctl -t blocklist -T add {ip}",
+      trigger: "Alerte HIGH/CRITICAL avec source_ip",
+      firewall_host: "192.168.100.254",
+    },
+    target_type: "ip_address",
+    confirmation_timeout_seconds: 0,
+    is_active: true,
+    execution_count: 0,
+    last_executed_at: null,
+    created_by: "system",
+  },
+  {
+    id: "pb-002",
+    name: "Désactivation compte Active Directory",
+    description:
+      "Désactive un compte utilisateur compromis via LDAP3 sur le contrôleur de domaine (port 389). " +
+      "Mode CONFIRM : un analyste doit valider dans les 60 secondes. " +
+      "Déclenché sur détection de mouvement latéral ou compromission de compte.",
+    action_type: "disable_account",
+    execution_mode: "CONFIRM",
+    parameters: {
+      method: "LDAP3 disable_account",
+      ldap_port: 389,
+      trigger: "Compromission de compte (mouvement latéral)",
+      timeout_confirmation_s: 60,
+    },
+    target_type: "user_account",
+    confirmation_timeout_seconds: 60,
+    is_active: true,
+    execution_count: 0,
+    last_executed_at: null,
+    created_by: "system",
+  },
+  {
+    id: "pb-003",
+    name: "Escalade incident — Alerte critique",
+    description:
+      "Crée un ticket d'incident et envoie une notification d'escalade immédiate " +
+      "quand une alerte CRITICAL reste non résolue. " +
+      "Canaux : email + Slack. Déclenché par le moteur de corrélation.",
+    action_type: "notify_escalation",
+    execution_mode: "CONFIRM",
+    parameters: {
+      method: "notification + ticket ITSM",
+      trigger: "Alerte CRITICAL non résolue",
+      channels: ["email", "slack"],
+      ticket_system: "interne",
+    },
+    target_type: null,
+    confirmation_timeout_seconds: 300,
+    is_active: true,
+    execution_count: 0,
+    last_executed_at: null,
+    created_by: "system",
+  },
+];
+
 const ACTION_TYPE_LABELS: Record<string, string> = {
   block_ip: "Bloquer IP",
   disable_account: "Désactiver compte",
@@ -56,9 +125,9 @@ export default function PlaybooksView({ activeRole }: PlaybooksViewProps) {
     async function loadPlaybooks() {
       try {
         const res = await api.getPlaybooks();
-        setPlaybooks(res);
-      } catch (err) {
-        console.error("Erreur chargement playbooks SOAR", err);
+        setPlaybooks(res.length > 0 ? res : PLAYBOOKS_FALLBACK);
+      } catch {
+        setPlaybooks(PLAYBOOKS_FALLBACK);
       } finally {
         setLoading(false);
       }

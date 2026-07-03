@@ -8,6 +8,7 @@ Middlewares appliqués (du plus extérieur au plus intérieur) :
   1. SecurityHeadersMiddleware — HSTS, X-Frame-Options, CSP, etc.
   2. RequestIdMiddleware — génère / propage un X-Request-Id
   3. CORSMiddleware — origins explicites, pas de wildcard
+  4. (slowapi) — rate limit sur endpoints sensibles
 
 Endpoints :
   GET  /health              — healthcheck enrichi (ES ping)
@@ -41,8 +42,6 @@ logger = logging.getLogger("main")
 # ─────────────────────────────────────────────────────────────────────────────
 # Middlewares
 # ─────────────────────────────────────────────────────────────────────────────
-# Un middleware ASGI est un objet appelable qui reçoit (scope, receive, send) et peut
-# inspecter/modifier la requête ou la réponse avant/après de passer la main à l'application.
 
 class SecurityHeadersMiddleware:
     """Ajoute les en-têtes de sécurité à chaque réponse."""
@@ -95,9 +94,7 @@ class RequestIdMiddleware:
             await self.app(scope, receive, send)
             return
 
-        # Récupère l'ID entrant ou en génère un nouveau.
-        # Cet identifiant permet de retrouver toutes les traces de logs liées à une même requête,
-        # même si elle traverse plusieurs services.
+        # Récupère l'ID entrant ou en génère un nouveau
         headers = dict(scope.get("headers") or [])
         rid = headers.get(b"x-request-id", b"").decode("latin-1") or uuid.uuid4().hex
         scope["state"] = scope.get("state", {})
@@ -134,13 +131,17 @@ class RequestIdMiddleware:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Démarrage / arrêt propre : ferme la connexion ES."""
-    # Tout le code avant le `yield` s'exécute au démarrage de l'application.
+    """Démarrage / arrêt propre : ferme ES, Redis et PostgreSQL."""
     logger.info("Smart SIEM API starting (env=%s)", settings.APP_ENV)
+    from app.core.postgres import close_pg_pool, ensure_admin_user, get_pg_pool
+    await get_pg_pool()
+    await ensure_admin_user()
     yield
     # Tout le code après le `yield` s'exécute à l'arrêt (ex: Ctrl+C, arrêt du conteneur),
     # ce qui permet de libérer proprement les connexions réseau ouvertes.
     await close_es_client()
+    await close_redis_client()
+    await close_pg_pool()
     logger.info("Smart SIEM API stopped")
 
 
@@ -148,8 +149,7 @@ async def lifespan(app: FastAPI):
 # Application
 # ─────────────────────────────────────────────────────────────────────────────
 
-# En prod, on coupe la doc OpenAPI (fuite de schéma) : sans ces routes, un attaquant
-# ne peut pas lister automatiquement tous les endpoints et leurs paramètres.
+# En prod, on coupe la doc OpenAPI (fuite de schéma)
 _docs_kwargs = {}
 if settings.APP_ENV == "prod" or not settings.DOCS_ENABLED:
     _docs_kwargs = {"docs_url": None, "redoc_url": None, "openapi_url": None}
@@ -157,11 +157,7 @@ if settings.APP_ENV == "prod" or not settings.DOCS_ENABLED:
 # Création de l'application FastAPI avec ses métadonnées (affichées dans /docs quand actif).
 app = FastAPI(
     title="Smart SIEM API",
-    description=(
-        "API REST du backend Smart SIEM pour l'authentification, la recherche de logs, "
-        "la gestion des alertes, des incidents, des règles de corrélation, des rapports "
-        "et l'audit sécurité."
-    ),
+    description="API REST du système de gestion et d'analyse des événements de sécurité",
     version="1.0.0",
     terms_of_service="https://example.com/terms",
     contact={"name": "Smart SIEM Team", "email": "security@example.com"},
@@ -170,18 +166,24 @@ app = FastAPI(
     **_docs_kwargs,
 )
 
-# Middlewares (l'ordre est important : extérieur en dernier via `add_middleware`).
-# FastAPI empile les middlewares dans l'ordre inverse d'ajout : le dernier ajouté
-# est donc le plus "extérieur" (exécuté en premier sur la requête entrante).
+# Rate limiter
+app.state.limiter = limiter
+
+# Middlewares (l'ordre est important : extérieur en dernier via `add_middleware`)
 app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(RequestIdMiddleware)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.CORS_ORIGINS,
-    allow_credentials=False,  # API sur Bearer, pas de cookies (donc pas besoin d'autoriser les credentials CORS)
-    allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
-    allow_headers=["Authorization", "Content-Type", "X-Request-Id"],
-    max_age=600,  # durée en secondes pendant laquelle le navigateur met en cache la réponse "preflight" CORS
+    allow_origins=[
+        "http://localhost:5173",
+        "http://localhost:5176",
+        "http://localhost:3000",
+        "http://127.0.0.1:5173",
+        "http://127.0.0.1:5176",
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 # Gestionnaires d'erreurs : transforment chaque type d'exception en réponse JSON cohérente,
@@ -190,8 +192,7 @@ app.add_exception_handler(HTTPException, http_exception_handler)
 app.add_exception_handler(RequestValidationError, validation_exception_handler)
 app.add_exception_handler(Exception, generic_exception_handler)
 
-# Router agrégateur (corrige le code mort de la version précédente) :
-# toutes les routes définies dans app/api/v1/* sont montées ici sous le préfixe /api/v1.
+# Router agrégateur
 app.include_router(api_router, prefix="/api/v1")
 
 
@@ -202,8 +203,6 @@ app.include_router(api_router, prefix="/api/v1")
 @app.get("/health", tags=["Santé"])
 async def health_check():
     """Endpoint de santé — RF-COL-05."""
-    # Vérifie qu'Elasticsearch répond, pour distinguer "l'API tourne" de
-    # "l'API tourne mais ne peut plus rien lire/écrire".
     es_ok = await es_ping()
     return {
         "status": "ok",
