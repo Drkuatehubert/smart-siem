@@ -11,8 +11,16 @@ from soar.orchestrator import handle_alert
 logger = logging.getLogger("soar.worker")
 
 
-def _connect(broker_url: str) -> redis.Redis:
-    client = redis.from_url(broker_url, decode_responses=True)
+def _connect() -> redis.Redis:
+    """Crée une connexion Redis avec timeout socket explicite."""
+    # socket_timeout=None : pas de timeout socket pendant blpop (timeout applicatif = 5s)
+    # socket_connect_timeout=5 : échec rapide si Redis est injoignable au démarrage
+    client = redis.from_url(
+        config.CELERY_BROKER,
+        decode_responses=True,
+        socket_timeout=None,
+        socket_connect_timeout=5,
+    )
     client.ping()
     return client
 
@@ -26,11 +34,10 @@ def main():
 
     while True:
         try:
-            client = _connect(config.CELERY_BROKER)
+            client = _connect()
             logger.info("Connecté à Redis : %s", config.CELERY_BROKER)
 
             while True:
-                # BLPOP bloque jusqu'à 5s, retourne (key, value) ou None si timeout
                 item = client.blpop("soar_alerts", timeout=5)
                 if item is None:
                     continue
@@ -43,20 +50,20 @@ def main():
                     logger.error("Message ignoré (JSON invalide) : %s — %s", raw[:200], exc)
                     continue
 
-                alert_id = alert.get("id", "unknown")
+                alert_id = alert.get("alert_id", alert.get("id", "?"))
                 logger.info(
-                    "Alerte reçue : id=%s rule=%s severity=%s",
-                    alert_id, alert.get("rule_id"), alert.get("severity"),
+                    "[SOAR] Alerte reçue : %s  rule=%s  level=%s",
+                    str(alert_id)[:8], alert.get("rule_name"), alert.get("level"),
                 )
 
                 try:
                     result = asyncio.run(handle_alert(alert))
-                    logger.info("Alerte traitée : id=%s résultat=%s", alert_id, result)
+                    logger.info("[SOAR] Alerte traitée : %s  résultat=%s", str(alert_id)[:8], result)
                 except Exception as exc:
-                    logger.error("Erreur traitement alerte %s : %s", alert_id, exc)
+                    logger.error("[SOAR] Erreur playbook %s : %s", str(alert_id)[:8], exc)
 
-        except redis.RedisError as exc:
-            logger.error("Erreur Redis : %s — reconnexion dans 5s", exc)
+        except (redis.ConnectionError, redis.TimeoutError) as exc:
+            logger.warning("Erreur Redis : %s — reconnexion dans 5s", exc)
             time.sleep(5)
         except Exception as exc:
             logger.error("Erreur inattendue : %s — reprise dans 5s", exc)

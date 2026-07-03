@@ -86,8 +86,8 @@ class Settings(BaseSettings):
         min_length=32,
     )
     JWT_ALGORITHM: JWT_ALLOWED_ALGS = "HS256"
-    JWT_EXPIRY_MINUTES: int = Field(default=15, ge=1, le=60 * 24)
-    JWT_REFRESH_EXPIRY_MINUTES: int = Field(default=60 * 24, ge=1, le=60 * 24 * 30)
+    JWT_EXPIRY_MINUTES: int = Field(default=480, ge=1, le=60 * 24)       # 8 h
+    JWT_REFRESH_EXPIRY_MINUTES: int = Field(default=60 * 24 * 7, ge=1, le=60 * 24 * 30)  # 7 j
     JWT_ACCESS_LEEWAY_SECONDS: int = Field(default=30, ge=0, le=300)
     JWT_ISSUER: str = "smart-siem"
     JWT_AUDIENCE: str = "smart-siem-api"
@@ -145,8 +145,8 @@ class Settings(BaseSettings):
     ELASTICSEARCH_PASSWORD: str = "8-0Il66xvSeGnK=COySu"
     ELASTICSEARCH_TLS_VERIFY: bool = True
     ELASTICSEARCH_CA_CERTS: Optional[str] = None
-    ELASTICSEARCH_REQUEST_TIMEOUT: int = 10
-    ELASTICSEARCH_MAX_RETRIES: int = 2
+    ELASTICSEARCH_REQUEST_TIMEOUT: int = 5
+    ELASTICSEARCH_MAX_RETRIES: int = 0
 
     # ── Redis ───────────────────────────────────────────────────────
     REDIS_HOST: str = "redis"

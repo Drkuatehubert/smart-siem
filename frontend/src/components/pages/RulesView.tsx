@@ -170,14 +170,14 @@ export default function RulesView({ activeRole }: RulesViewProps) {
   }
 
   const filteredRules = rules.filter((rule) => {
-    return (
-      rule.name.toLowerCase().includes(search.toLowerCase()) ||
-      rule.description.toLowerCase().includes(search.toLowerCase())
-    );
+    const name = (rule.name || "").toLowerCase();
+    const desc = (rule.description || "").toLowerCase();
+    const q = search.toLowerCase();
+    return name.includes(q) || desc.includes(q);
   });
 
   // Badge styles for rule_type
-  const ruleTypeBadge = (rt: RuleType) => {
+  const ruleTypeBadge = (rt: RuleType): string => {
     switch (rt) {
       case "threshold":
         return "text-blue-500 bg-blue-500/10 border-blue-500/20";
@@ -187,6 +187,10 @@ export default function RulesView({ activeRole }: RulesViewProps) {
         return "text-amber-500 bg-amber-500/10 border-amber-500/20";
       case "composite":
         return "text-rose-500 bg-rose-500/10 border-rose-500/20";
+      case "cross_source":
+        return "text-teal-500 bg-teal-500/10 border-teal-500/20";
+      default:
+        return "text-slate-500 bg-slate-500/10 border-slate-500/20";
     }
   };
 
@@ -443,6 +447,7 @@ export default function RulesView({ activeRole }: RulesViewProps) {
                     <option value="pattern">Pattern</option>
                     <option value="behavioral">Comportemental</option>
                     <option value="composite">Composite</option>
+                    <option value="cross_source">Multi-sources (Cross-source)</option>
                   </select>
                 </div>
 

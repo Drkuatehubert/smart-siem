@@ -3,10 +3,10 @@ import { mapLogEvent, unwrapResults } from "./mappers";
 import type { LogEvent, LogSource, RawLog } from "../types";
 
 export class LogService extends BaseService {
-  async getLogs(): Promise<LogEvent[]> {
+  async getLogs(size = 200): Promise<LogEvent[]> {
     const res = await this.request<{ items: LogEvent[]; total: number } | LogEvent[]>(
       "GET",
-      "/logs",
+      `/logs?size=${size}`,
     );
     return unwrapResults<Record<string, unknown>>(res).map(mapLogEvent);
   }

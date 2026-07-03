@@ -9,7 +9,8 @@ logger = logging.getLogger(__name__)
 
 class Playbook1BlockIP(BasePlaybook):
     async def execute(self, alert: dict) -> dict:
-        ip = alert.get("source_ip") or alert.get("normalized_fields", {}).get("source_ip")
+        source_ips = alert.get("source_ips", [])
+        ip = alert.get("source_ip") or (source_ips[0] if source_ips else None) or alert.get("normalized_fields", {}).get("source_ip")
         if not ip:
             return {"status": "skipped", "reason": "no source_ip"}
 

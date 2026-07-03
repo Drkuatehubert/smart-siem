@@ -19,6 +19,7 @@ function toUserRole(role: string): UserRole {
 
 interface LoginResponse {
   access_token: string;
+  refresh_token?: string;
   token_type: string;
   expires_in?: number;
   user: {
@@ -46,6 +47,9 @@ export class AuthService extends BaseService {
     const token = data.access_token;
 
     localStorage.setItem("siem_jwt_token", token);
+    if (data.refresh_token) {
+      localStorage.setItem("siem_refresh_token", data.refresh_token);
+    }
     localStorage.setItem("siem_authenticated", "true");
     localStorage.setItem("siem_role", data.user.role);
     localStorage.setItem("siem_email", data.user.email || email);
@@ -78,6 +82,7 @@ export class AuthService extends BaseService {
       // Si l'API échoue, on nettoie quand même la session locale
     }
     localStorage.removeItem("siem_jwt_token");
+    localStorage.removeItem("siem_refresh_token");
     localStorage.removeItem("siem_authenticated");
     localStorage.removeItem("siem_role");
     localStorage.removeItem("siem_email");

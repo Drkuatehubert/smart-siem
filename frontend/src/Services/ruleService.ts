@@ -9,10 +9,9 @@ import type {
 
 export class RuleService extends BaseService {
   async getRules(): Promise<CorrelationRule[]> {
-    const res = await this.request<{ results?: Record<string, unknown>[] } | Record<string, unknown>[]>(
-      "GET",
-      "/rules",
-    );
+    const res = await this.request<
+      { items: Record<string, unknown>[]; total: number } | Record<string, unknown>[]
+    >("GET", "/rules");
     return unwrapResults<Record<string, unknown>>(res).map(mapRule);
   }
 

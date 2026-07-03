@@ -79,7 +79,7 @@ export interface LogEvent {
 }
 
 // ===== 4.4 — correlation_rules (PostgreSQL) =====
-export type RuleType = "threshold" | "pattern" | "behavioral" | "composite";
+export type RuleType = "threshold" | "pattern" | "behavioral" | "composite" | "cross_source";
 
 export interface CorrelationRule {
   id: string;

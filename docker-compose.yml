@@ -95,6 +95,9 @@ services:
       dockerfile: Dockerfile
     container_name: siem-normalizer
     env_file: .env
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
     ports:
       - "8443:443"
     volumes:
@@ -121,6 +124,8 @@ services:
       - REDIS_TLS=false
       - RATE_LIMIT_STORAGE_URI=redis://redis:6379/1
       - PG_DSN=postgresql://postgres:felicia@postgres:5432/nafeh
+      - JWT_EXPIRY_MINUTES=480
+      - JWT_REFRESH_EXPIRY_MINUTES=10080
     ports:
       - "8000:8000"
     networks:

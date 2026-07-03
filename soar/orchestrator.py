@@ -26,9 +26,9 @@ async def handle_alert(alert: dict) -> dict:
         "description": "..."
     }
     """
-    alert_id = alert.get("id", "unknown")
+    alert_id = alert.get("alert_id", alert.get("id", "unknown"))
     rule_id = alert.get("rule_id", "")
-    severity = alert.get("severity", "INFO")
+    severity = alert.get("level", alert.get("severity", "INFO"))
 
     logger.info(
         "Orchestrateur — alerte reçue : id=%s rule=%s severity=%s",
@@ -43,7 +43,8 @@ async def handle_alert(alert: dict) -> dict:
         resultats.append(r3)
 
     # Playbook 1 — Blocage IP sur brute-force et scan
-    if rule_id in _BRUTE_FORCE_RULES:
+    rule_key = rule_id or alert.get("rule_name", "")
+    if rule_key in _BRUTE_FORCE_RULES or "T1110" in rule_key or "brute" in rule_key.lower() or "Brute" in rule_key:
         r1 = await Playbook1BlockIP().execute(alert)
         resultats.append(r1)
 

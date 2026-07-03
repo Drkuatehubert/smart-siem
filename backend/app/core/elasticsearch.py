@@ -25,7 +25,7 @@ def _create_client() -> AsyncElasticsearch:
         "verify_certs": settings.ELASTICSEARCH_TLS_VERIFY,
         "request_timeout": settings.ELASTICSEARCH_REQUEST_TIMEOUT,
         "max_retries": settings.ELASTICSEARCH_MAX_RETRIES,
-        "retry_on_timeout": True,
+        "retry_on_timeout": False,
         "http_compress": True,
         "connections_per_node": 10,
         "sniff_on_start": False,

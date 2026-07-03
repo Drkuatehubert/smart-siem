@@ -18,6 +18,7 @@ import {
   SlidersHorizontal,
   Clock,
   Activity,
+  FileText,
 } from "lucide-react";
 import api from "../../Services/api";
 import type { LogEvent } from "../../types";
@@ -25,6 +26,7 @@ import type { LogEvent } from "../../types";
 export default function LogsView() {
   const [logs, setLogs] = useState<LogEvent[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [searching, setSearching] = useState(false);
 
   // Advanced search form inputs
@@ -42,19 +44,26 @@ export default function LogsView() {
 
   const [selectedLogId, setSelectedLogId] = useState<string | null>(null);
 
-  useEffect(() => {
-    async function loadLogs() {
-      try {
-        const res = await api.getLogs();
-        setLogs(res);
-      } catch (err) {
-        console.error("Erreur chargement logs", err);
-      } finally {
-        setLoading(false);
-      }
+  // ── Chargement logs depuis API ─────────────────────────────────────────────
+
+  const loadLogs = async () => {
+    setRefreshing(true);
+    try {
+      const res = await api.getLogs(200);
+      setLogs(res);
+    } catch (err) {
+      console.error("Erreur chargement logs", err);
+    } finally {
+      setRefreshing(false);
+      setLoading(false);
     }
+  };
+
+  useEffect(() => {
     loadLogs();
   }, []);
+
+  // ── Handlers ───────────────────────────────────────────────────────────────
 
   const handleSearchTrigger = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
@@ -65,7 +74,7 @@ export default function LogsView() {
       setAppliedLogType(logTypeInput);
       setAppliedSeverity(severityFilter);
       setSearching(false);
-    }, 600);
+    }, 400);
   };
 
   const handleResetFilters = () => {
@@ -73,10 +82,16 @@ export default function LogsView() {
     setUserInput("");
     setLogTypeInput("ALL");
     setSeverityFilter("ALL");
+    setTimeRange("24h");
     setAppliedIpHost("");
     setAppliedUser("");
     setAppliedLogType("ALL");
     setAppliedSeverity("ALL");
+    loadLogs();
+  };
+
+  const handleRefresh = () => {
+    loadLogs();
   };
 
   if (loading) {
@@ -90,7 +105,8 @@ export default function LogsView() {
     );
   }
 
-  // Filter logs based on applied states
+  // ── Filtrage ──────────────────────────────────────────────────────────────
+
   const filteredLogs = logs.filter((log) => {
     const matchesSeverity =
       appliedSeverity === "ALL" || log.severity === appliedSeverity;
@@ -109,20 +125,103 @@ export default function LogsView() {
     return matchesSeverity && matchesCategory && matchesIpHost && matchesUser;
   });
 
-  const handleExport = () => {
-    const dataStr =
-      "data:text/json;charset=utf-8," +
-      encodeURIComponent(JSON.stringify(filteredLogs, null, 2));
-    const downloadAnchor = document.createElement("a");
-    downloadAnchor.setAttribute("href", dataStr);
-    downloadAnchor.setAttribute(
-      "download",
-      `SIEM_Export_Logs_${new Date().toISOString().slice(0, 10)}.json`,
+  // ── Exports ────────────────────────────────────────────────────────────────
+
+  const handleExportCSV = () => {
+    const BOM = '﻿';
+    const header = '"Horodatage","Type","Message","Source IP","Utilisateur","Criticité"\n';
+    const rows = filteredLogs.map((l) =>
+      [
+        l['@timestamp'] || '',
+        l.log_type || '',
+        (l.raw_message || '').replace(/"/g, '""'),
+        l.source_ip || '',
+        l.username || '',
+        l.severity || '',
+      ]
+        .map((v) => `"${v}"`)
+        .join(',')
     );
-    document.body.appendChild(downloadAnchor);
-    downloadAnchor.click();
-    downloadAnchor.remove();
+    const csv = BOM + header + rows.join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `smart-siem-investigation-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
   };
+
+  const handleExportPDF = () => {
+    const printWindow = window.open('', '_blank', 'width=960,height=700');
+    if (!printWindow) return;
+
+    const dateStr = new Date().toLocaleString('fr-FR');
+    const rowsHtml = filteredLogs
+      .map(
+        (log) => `
+        <tr>
+          <td>${new Date(log['@timestamp']).toLocaleString('fr-FR')}</td>
+          <td>${log.log_type || '—'}</td>
+          <td class="msg">${(log.raw_message || '—').substring(0, 90)}</td>
+          <td>${log.source_ip || '—'}</td>
+          <td>${log.username || '—'}</td>
+          <td class="sev ${log.severity}">${log.severity || '—'}</td>
+        </tr>`
+      )
+      .join('');
+
+    printWindow.document.write(`<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8"/>
+  <title>Smart SIEM — Investigation ${new Date().toISOString().slice(0, 10)}</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Courier New', monospace; font-size: 10px; color: #1a1a2e; padding: 20px; }
+    header { background: #1e3a5f; color: white; padding: 14px 20px; border-radius: 6px; margin-bottom: 14px; }
+    header h1 { font-size: 16px; letter-spacing: 1px; }
+    header p  { font-size: 9px; opacity: .75; margin-top: 4px; }
+    table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+    th { background: #1e3a5f; color: white; padding: 6px 8px; text-align: left; font-size: 9px; }
+    td { padding: 4px 8px; border-bottom: 1px solid #e2e8f0; vertical-align: top; }
+    tr:nth-child(even) td { background: #f8fafc; }
+    .msg { max-width: 280px; word-break: break-word; }
+    .sev.critical { color: #dc2626; font-weight: bold; }
+    .sev.high     { color: #ea580c; font-weight: bold; }
+    .sev.warning  { color: #d97706; font-weight: bold; }
+    .sev.info     { color: #2563eb; }
+    footer { margin-top: 16px; font-size: 8px; color: #94a3b8; border-top: 1px solid #e2e8f0; padding-top: 8px; }
+    @media print { body { padding: 10px; } header { -webkit-print-color-adjust: exact; print-color-adjust: exact; } th { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>SMART SIEM — Rapport d'Investigation</h1>
+    <p>Généré le : ${dateStr} &nbsp;|&nbsp; ${filteredLogs.length} événements affichés sur ${logs.length} chargés</p>
+  </header>
+  <table>
+    <thead>
+      <tr>
+        <th>Horodatage</th><th>Type</th><th>Message</th>
+        <th>Source IP</th><th>Utilisateur</th><th>Criticité</th>
+      </tr>
+    </thead>
+    <tbody>${rowsHtml}</tbody>
+  </table>
+  <footer>Confidentiel — Usage interne uniquement &nbsp;|&nbsp; Smart SIEM v1.0 &nbsp;|&nbsp; ISO 27001 / RGPD</footer>
+</body>
+</html>`);
+
+    printWindow.document.close();
+    printWindow.focus();
+    setTimeout(() => {
+      printWindow.print();
+      printWindow.close();
+    }, 300);
+  };
+
+  // ── Render ─────────────────────────────────────────────────────────────────
 
   return (
     <div
@@ -148,7 +247,7 @@ export default function LogsView() {
 
           <button
             onClick={() => handleSearchTrigger()}
-            disabled={searching}
+            disabled={searching || refreshing}
             className="flex items-center gap-2 px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold transition-all shadow-lg hover:shadow-blue-500/20 active:scale-95 cursor-pointer disabled:opacity-70"
           >
             {searching ? (
@@ -301,71 +400,47 @@ export default function LogsView() {
           </div>
         </div>
 
-        {/* Timeline Line & Nodes, Matching Mockup Perfectly */}
+        {/* Timeline Line & Nodes */}
         <div className="relative pt-6 pb-2 px-10">
           <div className="absolute top-1/2 left-10 right-10 h-0.5 bg-slate-200 dark:bg-slate-850 -translate-y-1/2"></div>
 
           <div className="relative flex justify-between items-center z-10">
-            {/* Node 00:00 */}
             <div className="flex flex-col items-center">
               <button
-                onClick={() => {
-                  setSeverityFilter("info");
-                  handleSearchTrigger();
-                }}
+                onClick={() => { setSeverityFilter("info"); handleSearchTrigger(); }}
                 className="w-3.5 h-3.5 rounded-full bg-blue-500 border-2 border-white dark:border-slate-800 shadow hover:scale-125 transition-all cursor-pointer"
                 title="Sévérité info"
               ></button>
-              <span className="text-[10px] font-mono text-slate-400 mt-2">
-                00:00
-              </span>
+              <span className="text-[10px] font-mono text-slate-400 mt-2">00:00</span>
             </div>
 
-            {/* Node 07:00 (Pulsing critical spike from the screenshot) */}
             <div className="flex flex-col items-center -translate-y-2">
               <button
-                onClick={() => {
-                  setSeverityFilter("high");
-                  handleSearchTrigger();
-                }}
+                onClick={() => { setSeverityFilter("high"); handleSearchTrigger(); }}
                 className="px-3 py-1 bg-red-600 hover:bg-red-500 text-white font-mono text-[9px] font-extrabold rounded-full shadow-lg shadow-red-500/20 border-2 border-white dark:border-slate-800 animate-bounce flex items-center gap-1.5 cursor-pointer"
               >
                 <span className="w-1.5 h-1.5 rounded-full bg-white animate-ping"></span>
-                <span>1,284 ALERTES</span>
+                <span>{logs.filter(l => l.severity === "high" || l.severity === "critical").length} ALERTES</span>
               </button>
-              <span className="text-[10px] font-mono text-slate-400 mt-2">
-                07:00
-              </span>
+              <span className="text-[10px] font-mono text-slate-400 mt-2">07:00</span>
             </div>
 
-            {/* Node 15:00 */}
             <div className="flex flex-col items-center">
               <button
-                onClick={() => {
-                  setSeverityFilter("warning");
-                  handleSearchTrigger();
-                }}
+                onClick={() => { setSeverityFilter("warning"); handleSearchTrigger(); }}
                 className="w-3.5 h-3.5 rounded-full bg-orange-500 border-2 border-white dark:border-slate-800 shadow hover:scale-125 transition-all cursor-pointer"
                 title="Sévérité warning"
               ></button>
-              <span className="text-[10px] font-mono text-slate-400 mt-2">
-                15:00
-              </span>
+              <span className="text-[10px] font-mono text-slate-400 mt-2">15:00</span>
             </div>
 
-            {/* Node 23:59 */}
             <div className="flex flex-col items-center">
               <button
-                onClick={() => {
-                  setSeverityFilter("ALL");
-                  handleSearchTrigger();
-                }}
+                onClick={() => { setSeverityFilter("ALL"); handleSearchTrigger(); }}
                 className="w-3.5 h-3.5 rounded-full bg-blue-500 border-2 border-white dark:border-slate-800 shadow hover:scale-125 transition-all cursor-pointer"
                 title="Tous les événements"
               ></button>
-              <span className="text-[10px] font-mono text-slate-400 mt-2">
-                23:59
-              </span>
+              <span className="text-[10px] font-mono text-slate-400 mt-2">23:59</span>
             </div>
           </div>
         </div>
@@ -383,23 +458,48 @@ export default function LogsView() {
               Événements Détectés
             </h4>
             <span className="px-2.5 py-0.5 rounded-full bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400 font-bold font-mono text-[10px] border border-blue-100 dark:border-blue-900/30">
-              {filteredLogs.length} Résultats
+              {filteredLogs.length} / {logs.length} résultats
             </span>
           </div>
 
           <div className="flex items-center gap-2">
+            {/* Actualiser */}
             <button
-              onClick={handleExport}
+              onClick={handleRefresh}
+              disabled={refreshing}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 font-semibold font-mono text-xs transition-all active:scale-95 cursor-pointer disabled:opacity-60"
+              title="Recharger les 200 derniers logs depuis l'API"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? "animate-spin" : ""}`} />
+              <span>{refreshing ? "Chargement..." : "Actualiser"}</span>
+            </button>
+
+            {/* Export CSV */}
+            <button
+              onClick={handleExportCSV}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 font-semibold font-mono text-xs transition-all active:scale-95 cursor-pointer"
-              title="Exporter les logs filtrés au format JSON"
+              title="Exporter les logs filtrés au format CSV (Excel)"
             >
               <Download className="w-3.5 h-3.5" />
-              <span>Exporter</span>
+              <span>CSV</span>
             </button>
+
+            {/* Export PDF */}
+            <button
+              onClick={handleExportPDF}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 font-semibold font-mono text-xs transition-all active:scale-95 cursor-pointer"
+              title="Imprimer / exporter les logs filtrés au format PDF"
+            >
+              <FileText className="w-3.5 h-3.5" />
+              <span>PDF</span>
+            </button>
+
+            {/* Réinitialiser */}
             <button
               onClick={handleResetFilters}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 font-semibold font-mono text-xs transition-all active:scale-95 cursor-pointer"
-              title="Réinitialiser tous les filtres actifs"
+              disabled={refreshing}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 font-semibold font-mono text-xs transition-all active:scale-95 cursor-pointer disabled:opacity-60"
+              title="Vider les filtres et recharger les logs"
             >
               <SlidersHorizontal className="w-3.5 h-3.5" />
               <span>Réinitialiser</span>
@@ -422,95 +522,53 @@ export default function LogsView() {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60 font-mono text-xs text-slate-700 dark:text-slate-300">
-              {filteredLogs.length === 0 ? (
+              {refreshing ? (
+                <tr>
+                  <td colSpan={7} className="py-10 text-center text-slate-400">
+                    <RefreshCw className="w-6 h-6 text-blue-400 mx-auto mb-2 animate-spin" />
+                    <span>Actualisation en cours…</span>
+                  </td>
+                </tr>
+              ) : filteredLogs.length === 0 ? (
                 <tr>
                   <td colSpan={7} className="py-12 text-center text-slate-400">
                     <Terminal className="w-8 h-8 text-slate-300 dark:text-slate-700 mx-auto mb-3 animate-pulse" />
-                    <span>
-                      Aucun log brut ne correspond aux filtres saisis.
-                    </span>
+                    <span>Aucun log ne correspond aux filtres saisis.</span>
                   </td>
                 </tr>
               ) : (
                 filteredLogs.map((log) => {
                   const isExpanded = selectedLogId === log.raw_log_id;
 
-                  // Severity tags colors based on standard levels
                   const severityConfig =
                     log.severity === "critical"
-                      ? {
-                          text: "Critique",
-                          style: "text-red-500 bg-red-500/10 border-red-500/20",
-                        }
+                      ? { text: "Critique", style: "text-red-500 bg-red-500/10 border-red-500/20" }
                       : log.severity === "high"
-                        ? {
-                            text: "Haute",
-                            style:
-                              "text-orange-500 bg-orange-500/10 border-orange-500/20",
-                          }
-                        : log.severity === "warning"
-                          ? {
-                              text: "Avert.",
-                              style:
-                                "text-amber-500 bg-amber-500/10 border-amber-500/20",
-                            }
-                          : {
-                              text: "Info",
-                              style:
-                                "text-blue-500 bg-blue-500/10 border-blue-500/20",
-                            };
+                      ? { text: "Haute", style: "text-orange-500 bg-orange-500/10 border-orange-500/20" }
+                      : log.severity === "warning"
+                      ? { text: "Avert.", style: "text-amber-500 bg-amber-500/10 border-amber-500/20" }
+                      : { text: "Info", style: "text-blue-500 bg-blue-500/10 border-blue-500/20" };
 
-                  // Custom type tags based on log_type
                   const logTypeBadge = () => {
-                    if (log.log_type === "auth") {
-                      return (
-                        <span className="px-2 py-0.5 rounded text-[9px] font-mono font-bold uppercase text-orange-600 dark:text-orange-400 bg-orange-100/50 dark:bg-orange-950/30 border border-orange-200 dark:border-orange-900/20">
-                          SECURITY
-                        </span>
-                      );
-                    } else if (log.log_type === "network") {
-                      return (
-                        <span className="px-2 py-0.5 rounded text-[9px] font-mono font-bold uppercase text-emerald-600 dark:text-emerald-400 bg-emerald-100/50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-900/20">
-                          FIREWALL
-                        </span>
-                      );
-                    } else if (log.log_type === "system") {
-                      return (
-                        <span className="px-2 py-0.5 rounded text-[9px] font-mono font-bold uppercase text-blue-600 dark:text-blue-400 bg-blue-100/50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-900/20">
-                          SYSTEM
-                        </span>
-                      );
-                    } else if (log.log_type === "application") {
-                      return (
-                        <span className="px-2 py-0.5 rounded text-[9px] font-mono font-bold uppercase text-red-600 dark:text-red-400 bg-red-100/50 dark:bg-red-950/30 border border-red-200 dark:border-red-900/20">
-                          APP
-                        </span>
-                      );
-                    } else {
-                      return (
-                        <span className="px-2 py-0.5 rounded text-[9px] font-mono font-bold uppercase text-purple-600 dark:text-purple-400 bg-purple-100/50 dark:bg-purple-950/30 border border-purple-200 dark:border-purple-900/20">
-                          AUDIT
-                        </span>
-                      );
-                    }
+                    if (log.log_type === "auth")
+                      return <span className="px-2 py-0.5 rounded text-[9px] font-mono font-bold uppercase text-orange-600 dark:text-orange-400 bg-orange-100/50 dark:bg-orange-950/30 border border-orange-200 dark:border-orange-900/20">SECURITY</span>;
+                    if (log.log_type === "network")
+                      return <span className="px-2 py-0.5 rounded text-[9px] font-mono font-bold uppercase text-emerald-600 dark:text-emerald-400 bg-emerald-100/50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-900/20">FIREWALL</span>;
+                    if (log.log_type === "system")
+                      return <span className="px-2 py-0.5 rounded text-[9px] font-mono font-bold uppercase text-blue-600 dark:text-blue-400 bg-blue-100/50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-900/20">SYSTEM</span>;
+                    if (log.log_type === "application")
+                      return <span className="px-2 py-0.5 rounded text-[9px] font-mono font-bold uppercase text-red-600 dark:text-red-400 bg-red-100/50 dark:bg-red-950/30 border border-red-200 dark:border-red-900/20">APP</span>;
+                    return <span className="px-2 py-0.5 rounded text-[9px] font-mono font-bold uppercase text-purple-600 dark:text-purple-400 bg-purple-100/50 dark:bg-purple-950/30 border border-purple-200 dark:border-purple-900/20">AUDIT</span>;
                   };
 
                   return (
                     <React.Fragment key={log.raw_log_id}>
                       <tr
-                        onClick={() =>
-                          setSelectedLogId(isExpanded ? null : log.raw_log_id)
-                        }
-                        className={`hover:bg-slate-50 dark:hover:bg-slate-800/20 transition-all cursor-pointer ${
-                          isExpanded ? "bg-slate-50 dark:bg-slate-800/10" : ""
-                        }`}
+                        onClick={() => setSelectedLogId(isExpanded ? null : log.raw_log_id)}
+                        className={`hover:bg-slate-50 dark:hover:bg-slate-800/20 transition-all cursor-pointer ${isExpanded ? "bg-slate-50 dark:bg-slate-800/10" : ""}`}
                       >
                         <td className="py-2.5 px-6 text-center text-slate-400 shrink-0 select-none">
-                          {isExpanded ? (
-                            <ChevronUp className="w-3.5 h-3.5 text-blue-500" />
-                          ) : (
-                            <ChevronDown className="w-3.5 h-3.5" />
-                          )}
+                          {isExpanded ? <ChevronUp className="w-3.5 h-3.5 text-blue-500" /> : <ChevronDown className="w-3.5 h-3.5" />}
                         </td>
                         <td className="py-2.5 px-4 text-slate-400 text-[11px] font-medium">
                           {new Date(log["@timestamp"]).toLocaleString()}
@@ -528,9 +586,7 @@ export default function LogsView() {
                           {log.username || "system_root"}
                         </td>
                         <td className="py-2.5 px-4 text-center">
-                          <span
-                            className={`px-2.5 py-0.5 rounded-full text-[9px] font-bold border ${severityConfig.style}`}
-                          >
+                          <span className={`px-2.5 py-0.5 rounded-full text-[9px] font-bold border ${severityConfig.style}`}>
                             {severityConfig.text}
                           </span>
                         </td>
@@ -539,19 +595,12 @@ export default function LogsView() {
                       {/* Expandable JSON Detail View */}
                       {isExpanded && (
                         <tr>
-                          <td
-                            colSpan={7}
-                            className="p-0 bg-slate-50/50 dark:bg-slate-900/10"
-                          >
+                          <td colSpan={7} className="p-0 bg-slate-50/50 dark:bg-slate-900/10">
                             <div className="px-12 py-5 border-t border-b border-slate-100 dark:border-slate-800/60 text-slate-850 dark:text-slate-200 font-mono text-[11px] leading-relaxed">
                               <div className="flex items-center justify-between mb-3 text-[10px] uppercase text-slate-400 dark:text-slate-500 font-bold tracking-wider">
-                                <span>
-                                  Informations détaillées du document de log
-                                  (Elasticsearch Entry)
-                                </span>
+                                <span>Informations détaillées du document de log (Elasticsearch Entry)</span>
                                 <span className="flex items-center gap-1.5">
-                                  <Eye className="w-3.5 h-3.5" />{" "}
-                                  ELASTIC_INDEX_READY
+                                  <Eye className="w-3.5 h-3.5" /> ELASTIC_INDEX_READY
                                 </span>
                               </div>
                               <pre className="bg-white dark:bg-slate-950 p-4 rounded-xl border border-slate-200 dark:border-slate-800 overflow-x-auto text-slate-800 dark:text-slate-300 max-h-60 shadow-inner">

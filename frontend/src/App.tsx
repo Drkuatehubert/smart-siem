@@ -44,7 +44,7 @@ function isTokenValid(token: string): boolean {
 }
 
 function clearAuthStorage(): void {
-  ['siem_jwt_token', 'siem_authenticated', 'siem_role', 'siem_email', 'siem_username']
+  ['siem_jwt_token', 'siem_refresh_token', 'siem_authenticated', 'siem_role', 'siem_email', 'siem_username']
     .forEach(k => localStorage.removeItem(k));
 }
 

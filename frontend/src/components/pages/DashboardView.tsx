@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import {
   ShieldAlert,
   Terminal,
@@ -8,6 +8,7 @@ import {
   ArrowRight,
   ShieldCheck,
   UserCheck,
+  RefreshCw,
 } from "lucide-react";
 import {
   AreaChart,
@@ -30,6 +31,39 @@ import type {
 } from "../../types";
 import type { DashboardSummary } from "../../Services/dashboardService";
 
+// ── Cache localStorage ────────────────────────────────────────────────────────
+const CACHE_KEY = "siem_dashboard_cache";
+const CACHE_TTL_MS = 30_000; // 30 secondes
+
+interface DashboardCache {
+  ts: number;
+  logs: LogEvent[];
+  incidents: Incident[];
+  agents: EndpointAgent[];
+  profiles: UebaProfile[];
+  summary: DashboardSummary | null;
+}
+
+function readCache(): DashboardCache | null {
+  try {
+    const raw = localStorage.getItem(CACHE_KEY);
+    if (!raw) return null;
+    const parsed: DashboardCache = JSON.parse(raw);
+    if (Date.now() - parsed.ts > CACHE_TTL_MS) return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+function writeCache(data: Omit<DashboardCache, "ts">) {
+  try {
+    localStorage.setItem(CACHE_KEY, JSON.stringify({ ts: Date.now(), ...data }));
+  } catch {}
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 export default function DashboardView() {
   const [logs, setLogs] = useState<LogEvent[]>([]);
   const [incidents, setIncidents] = useState<Incident[]>([]);
@@ -37,31 +71,59 @@ export default function DashboardView() {
   const [profiles, setProfiles] = useState<UebaProfile[]>([]);
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
 
-  useEffect(() => {
-    async function fetchData() {
-      try {
-        const [logsRes, incidentsRes, agentsRes, profilesRes, summaryRes] =
-          await Promise.all([
-            api.getLogs(),
-            api.getIncidents(),
-            api.getAgents(),
-            api.getUebaProfiles(),
-            api.getDashboardSummary(),
-          ]);
-        setLogs(logsRes);
-        setIncidents(incidentsRes);
-        setAgents(agentsRes);
-        setProfiles(profilesRes);
-        setSummary(summaryRes);
-      } catch (err) {
-        console.error("Erreur chargement dashboard data", err);
-      } finally {
+  const loadData = useCallback(async (force = false) => {
+    // Lecture cache si pas de force
+    if (!force) {
+      const cached = readCache();
+      if (cached) {
+        setLogs(cached.logs ?? []);
+        setIncidents(cached.incidents ?? []);
+        setAgents(cached.agents ?? []);
+        setProfiles(cached.profiles ?? []);
+        setSummary(cached.summary ?? null);
+        setLastRefresh(new Date(cached.ts));
         setLoading(false);
+        return;
       }
     }
-    fetchData();
+
+    setRefreshing(true);
+    try {
+      const [logsRes, incidentsRes, agentsRes, profilesRes, summaryRes] =
+        await Promise.all([
+          api.getLogs(),
+          api.getIncidents(),
+          api.getAgents(),
+          api.getUebaProfiles(),
+          api.getDashboardSummary(),
+        ]);
+      setLogs(logsRes);
+      setIncidents(incidentsRes);
+      setAgents(agentsRes);
+      setProfiles(profilesRes);
+      setSummary(summaryRes);
+      setLastRefresh(new Date());
+      writeCache({
+        logs: logsRes,
+        incidents: incidentsRes,
+        agents: agentsRes,
+        profiles: profilesRes,
+        summary: summaryRes,
+      });
+    } catch (err) {
+      console.error("Erreur chargement dashboard data", err);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
   }, []);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
 
   if (loading) {
     return (
@@ -90,6 +152,25 @@ export default function DashboardView() {
             profiles.length,
         )
       : 0;
+
+  const securityScore: number | null =
+    summary !== null || agents.length > 0
+      ? Math.max(0, Math.min(100, 100 - criticalAlerts * 10 - Math.min(openAlerts - criticalAlerts, 10) * 2))
+      : null;
+
+  const securityLevel =
+    securityScore === null ? '—'
+    : securityScore >= 90 ? 'Optimal'
+    : securityScore >= 70 ? 'Satisfaisant'
+    : securityScore >= 50 ? 'Dégradé'
+    : 'Critique';
+
+  const scoreColorClass =
+    securityScore === null || securityScore >= 70
+      ? 'border-emerald-500'
+      : securityScore >= 50
+      ? 'border-amber-500'
+      : 'border-rose-500';
 
   const activityData =
     summary?.log_volume_by_hour?.map((point) => ({
@@ -142,6 +223,32 @@ export default function DashboardView() {
       id="dashboard-view"
       className="p-6 space-y-6 overflow-y-auto h-full pb-16"
     >
+      {/* Toolbar */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h3 className="font-bold text-sm text-slate-800 dark:text-slate-100">
+            Vue d'ensemble — Sécurité en temps réel
+          </h3>
+          {lastRefresh && (
+            <p className="text-[10px] text-slate-400 font-mono mt-0.5">
+              Mise à jour : {lastRefresh.toLocaleTimeString("fr-FR")}
+              {Date.now() - lastRefresh.getTime() < CACHE_TTL_MS && (
+                <span className="ml-2 text-emerald-500">● depuis le cache</span>
+              )}
+            </p>
+          )}
+        </div>
+        <button
+          onClick={() => loadData(true)}
+          disabled={refreshing}
+          className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 font-semibold text-xs transition-all active:scale-95 cursor-pointer disabled:opacity-60"
+          title="Forcer le rechargement depuis l'API"
+        >
+          <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? "animate-spin" : ""}`} />
+          <span>{refreshing ? "Actualisation..." : "Actualiser"}</span>
+        </button>
+      </div>
+
       {/* 4 Stats Cards grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
         {/* Logs Card */}
@@ -402,27 +509,31 @@ export default function DashboardView() {
 
           <div className="py-6 flex items-center justify-center gap-6">
             <div className="relative w-28 h-28 flex items-center justify-center">
-              {/* Simple CSS Circular indicator */}
               <div className="absolute inset-0 rounded-full border-8 border-slate-100 dark:border-slate-850"></div>
-              <div className="absolute inset-0 rounded-full border-8 border-emerald-500 border-t-transparent border-r-transparent animate-spin-slow"></div>
+              <div className={`absolute inset-0 rounded-full border-8 ${scoreColorClass} border-t-transparent border-r-transparent animate-spin-slow`}></div>
               <div className="text-center">
                 <span className="text-3xl font-extrabold text-slate-800 dark:text-slate-100 font-mono">
-                  82
+                  {securityScore !== null ? securityScore : '—'}
                 </span>
-                <span className="text-xs text-slate-400 block font-semibold">
-                  %
-                </span>
+                {securityScore !== null && (
+                  <span className="text-xs text-slate-400 block font-semibold">%</span>
+                )}
               </div>
             </div>
 
             <div className="space-y-2 text-xs">
               <div className="flex items-center gap-2 font-semibold">
-                <ShieldCheck className="w-4 h-4 text-emerald-500" />
-                <span>Niveau global : Optimal</span>
+                <ShieldCheck className={`w-4 h-4 ${securityScore === null || securityScore >= 70 ? 'text-emerald-500' : securityScore >= 50 ? 'text-amber-500' : 'text-rose-500'}`} />
+                <span>Niveau global : {securityLevel}</span>
               </div>
               <p className="text-[11px] text-slate-450 dark:text-slate-400 leading-relaxed max-w-xs">
-                Moteur de corrélation actif. Agents de télémétrie stables. 1
-                vulnérabilité critique en cours de remédiation (CVE-2024-3094).
+                {criticalAlerts > 0
+                  ? `${criticalAlerts} alerte(s) critique(s) active(s). ${activeAgents} agent(s) connecté(s) sur ${agents.length}.`
+                  : openAlerts > 0
+                  ? `${openAlerts} alerte(s) ouverte(s). ${activeAgents} agent(s) connecté(s) sur ${agents.length}.`
+                  : agents.length > 0
+                  ? `Aucune alerte critique. ${activeAgents} agent(s) connecté(s) sur ${agents.length}.`
+                  : 'Aucune donnée disponible.'}
               </p>
             </div>
           </div>
