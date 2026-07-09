@@ -6,6 +6,7 @@ import time
 import redis
 
 from soar import config
+from soar.db import get_pg
 from soar.orchestrator import handle_alert
 
 logger = logging.getLogger("soar.worker")
@@ -31,6 +32,9 @@ def main():
         format="%(asctime)s [%(levelname)s] %(name)s — %(message)s",
     )
     logger.info("SOAR worker démarré — écoute sur la queue 'soar_alerts'")
+
+    # Connexion PG eagerly pour seeder les playbooks système
+    asyncio.run(get_pg())
 
     while True:
         try:

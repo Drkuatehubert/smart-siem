@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Search,
   Terminal,
@@ -17,50 +17,89 @@ import {
   RefreshCw,
   SlidersHorizontal,
   Clock,
-  Activity,
+  BarChart2,
   FileText,
+  Flag,
 } from "lucide-react";
+import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import api from "../../Services/api";
 import type { LogEvent } from "../../types";
 
 export default function LogsView() {
   const [logs, setLogs] = useState<LogEvent[]>([]);
+  const [totalLogs, setTotalLogs] = useState(0);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [searching, setSearching] = useState(false);
+  const [eventActions, setEventActions] = useState<string[]>([]);
 
-  // Advanced search form inputs
+  // Flagged log IDs — persisted in localStorage
+  const [flaggedIds, setFlaggedIds] = useState<Set<string>>(() => {
+    try {
+      const stored = localStorage.getItem("siem_flagged_logs");
+      return new Set(stored ? (JSON.parse(stored) as string[]) : []);
+    } catch {
+      return new Set();
+    }
+  });
+
+  // Search form inputs
   const [ipHostInput, setIpHostInput] = useState("");
   const [userInput, setUserInput] = useState("");
-  const [logTypeInput, setLogTypeInput] = useState("ALL");
+  const [eventActionInput, setEventActionInput] = useState("ALL");
   const [severityFilter, setSeverityFilter] = useState("ALL");
   const [timeRange, setTimeRange] = useState("24h");
 
-  // Applied filters (triggered by clicking "Lancer la recherche")
+  // Applied filters (committed when "Lancer la recherche" is clicked)
   const [appliedIpHost, setAppliedIpHost] = useState("");
   const [appliedUser, setAppliedUser] = useState("");
-  const [appliedLogType, setAppliedLogType] = useState("ALL");
+  const [appliedEventAction, setAppliedEventAction] = useState("ALL");
   const [appliedSeverity, setAppliedSeverity] = useState("ALL");
 
   const [selectedLogId, setSelectedLogId] = useState<string | null>(null);
 
-  // ── Chargement logs depuis API ─────────────────────────────────────────────
+  // Density data — grouped by hour from loaded logs
+  const densityData = useMemo(() => {
+    const byHour: Record<string, { login_failed: number; login_success: number; autres: number }> = {};
+    logs.forEach((log) => {
+      const ts = log["@timestamp"];
+      if (!ts) return;
+      const d = new Date(ts);
+      if (isNaN(d.getTime())) return;
+      const hour = d.getHours().toString().padStart(2, "0") + ":00";
+      if (!byHour[hour]) byHour[hour] = { login_failed: 0, login_success: 0, autres: 0 };
+      if (log.event_action === "login_failed") byHour[hour].login_failed++;
+      else if (log.event_action === "login_success") byHour[hour].login_success++;
+      else byHour[hour].autres++;
+    });
+    return Object.entries(byHour)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([hour, counts]) => ({ hour, ...counts }));
+  }, [logs]);
 
-  const loadLogs = async () => {
+  // ── Data loading ───────────────────────────────────────────────────────────
+
+  const loadLogs = useCallback(async () => {
     setRefreshing(true);
     try {
-      const res = await api.getLogs(200);
-      setLogs(res);
+      const res = await api.getLogsPage(200);
+      setLogs(res.items);
+      setTotalLogs(res.total);
     } catch (err) {
       console.error("Erreur chargement logs", err);
     } finally {
       setRefreshing(false);
       setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     loadLogs();
+  }, [loadLogs]);
+
+  // Load dynamic event_action values from ES
+  useEffect(() => {
+    api.getEventActions().then(setEventActions).catch(() => setEventActions([]));
   }, []);
 
   // ── Handlers ───────────────────────────────────────────────────────────────
@@ -71,7 +110,7 @@ export default function LogsView() {
     setTimeout(() => {
       setAppliedIpHost(ipHostInput);
       setAppliedUser(userInput);
-      setAppliedLogType(logTypeInput);
+      setAppliedEventAction(eventActionInput);
       setAppliedSeverity(severityFilter);
       setSearching(false);
     }, 400);
@@ -80,18 +119,34 @@ export default function LogsView() {
   const handleResetFilters = () => {
     setIpHostInput("");
     setUserInput("");
-    setLogTypeInput("ALL");
+    setEventActionInput("ALL");
     setSeverityFilter("ALL");
     setTimeRange("24h");
     setAppliedIpHost("");
     setAppliedUser("");
-    setAppliedLogType("ALL");
+    setAppliedEventAction("ALL");
     setAppliedSeverity("ALL");
     loadLogs();
   };
 
   const handleRefresh = () => {
     loadLogs();
+  };
+
+  const toggleFlag = (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setFlaggedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      try {
+        localStorage.setItem("siem_flagged_logs", JSON.stringify([...next]));
+      } catch {}
+      return next;
+    });
   };
 
   if (loading) {
@@ -110,8 +165,8 @@ export default function LogsView() {
   const filteredLogs = logs.filter((log) => {
     const matchesSeverity =
       appliedSeverity === "ALL" || log.severity === appliedSeverity;
-    const matchesCategory =
-      appliedLogType === "ALL" || log.log_type === appliedLogType;
+    const matchesEventAction =
+      appliedEventAction === "ALL" || log.event_action === appliedEventAction;
 
     const ipText =
       `${log.source_ip} ${log.dest_ip || ""} ${log.host}`.toLowerCase();
@@ -122,7 +177,7 @@ export default function LogsView() {
     const matchesUser =
       !appliedUser || userText.includes(appliedUser.toLowerCase());
 
-    return matchesSeverity && matchesCategory && matchesIpHost && matchesUser;
+    return matchesSeverity && matchesEventAction && matchesIpHost && matchesUser;
   });
 
   // ── Exports ────────────────────────────────────────────────────────────────
@@ -133,7 +188,7 @@ export default function LogsView() {
     const rows = filteredLogs.map((l) =>
       [
         l['@timestamp'] || '',
-        l.log_type || '',
+        l.event_action || '',
         (l.raw_message || '').replace(/"/g, '""'),
         l.source_ip || '',
         l.username || '',
@@ -162,7 +217,7 @@ export default function LogsView() {
         (log) => `
         <tr>
           <td>${new Date(log['@timestamp']).toLocaleString('fr-FR')}</td>
-          <td>${log.log_type || '—'}</td>
+          <td>${log.event_action || '—'}</td>
           <td class="msg">${(log.raw_message || '—').substring(0, 90)}</td>
           <td>${log.source_ip || '—'}</td>
           <td>${log.username || '—'}</td>
@@ -198,7 +253,7 @@ export default function LogsView() {
 <body>
   <header>
     <h1>SMART SIEM — Rapport d'Investigation</h1>
-    <p>Généré le : ${dateStr} &nbsp;|&nbsp; ${filteredLogs.length} événements affichés sur ${logs.length} chargés</p>
+    <p>Généré le : ${dateStr} &nbsp;|&nbsp; ${filteredLogs.length} événements affichés sur ${totalLogs} total ES</p>
   </header>
   <table>
     <thead>
@@ -293,23 +348,21 @@ export default function LogsView() {
             />
           </div>
 
-          {/* Log Type dropdown */}
+          {/* Type d'événement — dynamic dropdown from ES */}
           <div className="space-y-1">
             <label className="text-[10px] font-mono font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 flex items-center gap-1.5">
               <Filter className="w-3 h-3 text-slate-400" />
-              <span>Type de log</span>
+              <span>Type d'événement</span>
             </label>
             <select
-              value={logTypeInput}
-              onChange={(e) => setLogTypeInput(e.target.value)}
+              value={eventActionInput}
+              onChange={(e) => setEventActionInput(e.target.value)}
               className="w-full px-3 py-2 rounded-lg border text-xs bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-850 text-slate-800 dark:text-slate-200 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20 transition-all font-mono cursor-pointer appearance-none"
             >
-              <option value="ALL">Tous les logs</option>
-              <option value="auth">Authentification</option>
-              <option value="network">Réseau</option>
-              <option value="system">Système</option>
-              <option value="application">Application</option>
-              <option value="audit">Audit</option>
+              <option value="ALL">Tous les événements</option>
+              {eventActions.map((action) => (
+                <option key={action} value={action}>{action}</option>
+              ))}
             </select>
           </div>
 
@@ -370,81 +423,98 @@ export default function LogsView() {
         )}
       </div>
 
-      {/* 2. TIMELINE DES ÉVÉNEMENTS CARD */}
-      <div
-        id="logs-timeline-panel"
-        className="p-4 rounded-xl border bg-white dark:bg-[#1E293B] border-slate-200 dark:border-slate-800 shadow-sm space-y-3.5"
-      >
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Activity className="w-4 h-4 text-slate-500 dark:text-slate-400" />
-            <h4 className="font-bold text-xs uppercase tracking-wider text-slate-400 dark:text-slate-500 font-mono">
-              TIMELINE DES ÉVÉNEMENTS
-            </h4>
+      {/* 2. GRAPHE DE DENSITÉ */}
+      {logs.length > 0 && (
+        <div
+          id="logs-density-panel"
+          className="px-5 pt-4 pb-3 rounded-xl border bg-white dark:bg-[#1E293B] border-slate-200 dark:border-slate-800 shadow-sm space-y-3"
+        >
+          <div className="flex items-center justify-between">
+            <div>
+              <h4 className="font-bold text-sm text-slate-800 dark:text-slate-100 flex items-center gap-1.5">
+                <BarChart2 className="w-4 h-4 text-blue-500" />
+                Densité des événements (dernières 24h)
+              </h4>
+              <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5">
+                Pics = moments d'activité intense
+              </p>
+            </div>
+            <div className="flex items-center gap-4 text-[10px] font-mono text-slate-500 dark:text-slate-400">
+              <span className="flex items-center gap-1.5">
+                <span className="w-2.5 h-2.5 rounded-sm" style={{ background: "#E24B4A" }}></span>
+                Échecs login
+              </span>
+              <span className="flex items-center gap-1.5">
+                <span className="w-2.5 h-2.5 rounded-sm" style={{ background: "#639922" }}></span>
+                Connexions
+              </span>
+              <span className="flex items-center gap-1.5">
+                <span className="w-2.5 h-2.5 rounded-sm" style={{ background: "#888780" }}></span>
+                Autres
+              </span>
+            </div>
           </div>
 
-          {/* Legends */}
-          <div className="flex items-center gap-4 text-[10px] font-mono font-bold">
-            <div className="flex items-center gap-1.5">
-              <span className="w-2 h-2 rounded-full bg-red-500"></span>
-              <span className="text-slate-500">Critique</span>
-            </div>
-            <div className="flex items-center gap-1.5">
-              <span className="w-2 h-2 rounded-full bg-orange-500"></span>
-              <span className="text-slate-500">Avertissement</span>
-            </div>
-            <div className="flex items-center gap-1.5">
-              <span className="w-2 h-2 rounded-full bg-blue-500"></span>
-              <span className="text-slate-500">Info</span>
-            </div>
-          </div>
+          <ResponsiveContainer width="100%" height={120}>
+            <AreaChart data={densityData} margin={{ top: 4, right: 4, left: 0, bottom: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="rgba(148,163,184,0.2)" />
+              <XAxis dataKey="hour" tick={{ fontSize: 10 }} tickLine={false} axisLine={false} />
+              <YAxis tick={{ fontSize: 10 }} width={30} tickLine={false} axisLine={false} />
+              <Tooltip
+                contentStyle={{
+                  fontSize: 11,
+                  borderRadius: 8,
+                  border: "1px solid #e2e8f0",
+                  backgroundColor: "rgba(255,255,255,0.95)",
+                }}
+              />
+              <Area
+                type="monotone"
+                dataKey="login_failed"
+                stackId="1"
+                stroke="#E24B4A"
+                fill="#FCEBEB"
+                name="Échecs login"
+                dot={(dotProps: any) => {
+                  const { cx, cy, payload, key } = dotProps;
+                  if ((payload?.login_failed ?? 0) > 5) {
+                    return (
+                      <circle
+                        key={key}
+                        cx={cx}
+                        cy={cy}
+                        r={5}
+                        fill="#E24B4A"
+                        stroke="#fff"
+                        strokeWidth={2}
+                      />
+                    );
+                  }
+                  return <React.Fragment key={key} />;
+                }}
+              />
+              <Area
+                type="monotone"
+                dataKey="login_success"
+                stackId="1"
+                stroke="#639922"
+                fill="#EAF3DE"
+                name="Connexions"
+                dot={false}
+              />
+              <Area
+                type="monotone"
+                dataKey="autres"
+                stackId="1"
+                stroke="#888780"
+                fill="#F1EFE8"
+                name="Autres"
+                dot={false}
+              />
+            </AreaChart>
+          </ResponsiveContainer>
         </div>
-
-        {/* Timeline Line & Nodes */}
-        <div className="relative pt-6 pb-2 px-10">
-          <div className="absolute top-1/2 left-10 right-10 h-0.5 bg-slate-200 dark:bg-slate-850 -translate-y-1/2"></div>
-
-          <div className="relative flex justify-between items-center z-10">
-            <div className="flex flex-col items-center">
-              <button
-                onClick={() => { setSeverityFilter("info"); handleSearchTrigger(); }}
-                className="w-3.5 h-3.5 rounded-full bg-blue-500 border-2 border-white dark:border-slate-800 shadow hover:scale-125 transition-all cursor-pointer"
-                title="Sévérité info"
-              ></button>
-              <span className="text-[10px] font-mono text-slate-400 mt-2">00:00</span>
-            </div>
-
-            <div className="flex flex-col items-center -translate-y-2">
-              <button
-                onClick={() => { setSeverityFilter("high"); handleSearchTrigger(); }}
-                className="px-3 py-1 bg-red-600 hover:bg-red-500 text-white font-mono text-[9px] font-extrabold rounded-full shadow-lg shadow-red-500/20 border-2 border-white dark:border-slate-800 animate-bounce flex items-center gap-1.5 cursor-pointer"
-              >
-                <span className="w-1.5 h-1.5 rounded-full bg-white animate-ping"></span>
-                <span>{logs.filter(l => l.severity === "high" || l.severity === "critical").length} ALERTES</span>
-              </button>
-              <span className="text-[10px] font-mono text-slate-400 mt-2">07:00</span>
-            </div>
-
-            <div className="flex flex-col items-center">
-              <button
-                onClick={() => { setSeverityFilter("warning"); handleSearchTrigger(); }}
-                className="w-3.5 h-3.5 rounded-full bg-orange-500 border-2 border-white dark:border-slate-800 shadow hover:scale-125 transition-all cursor-pointer"
-                title="Sévérité warning"
-              ></button>
-              <span className="text-[10px] font-mono text-slate-400 mt-2">15:00</span>
-            </div>
-
-            <div className="flex flex-col items-center">
-              <button
-                onClick={() => { setSeverityFilter("ALL"); handleSearchTrigger(); }}
-                className="w-3.5 h-3.5 rounded-full bg-blue-500 border-2 border-white dark:border-slate-800 shadow hover:scale-125 transition-all cursor-pointer"
-                title="Tous les événements"
-              ></button>
-              <span className="text-[10px] font-mono text-slate-400 mt-2">23:59</span>
-            </div>
-          </div>
-        </div>
-      </div>
+      )}
 
       {/* 3. LOGS RESULTS PANEL */}
       <div
@@ -458,7 +528,7 @@ export default function LogsView() {
               Événements Détectés
             </h4>
             <span className="px-2.5 py-0.5 rounded-full bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400 font-bold font-mono text-[10px] border border-blue-100 dark:border-blue-900/30">
-              {filteredLogs.length} / {logs.length} résultats
+              {filteredLogs.length} / {totalLogs > 0 ? totalLogs.toLocaleString("fr-FR") : logs.length} résultats
             </span>
           </div>
 
@@ -519,26 +589,30 @@ export default function LogsView() {
                 <th className="py-2.5 px-4 w-32">Source IP</th>
                 <th className="py-2.5 px-4 w-28">Utilisateur</th>
                 <th className="py-2.5 px-4 w-24 text-center">Criticité</th>
+                <th className="py-2.5 px-3 w-10 text-center">
+                  <Flag className="w-3 h-3 mx-auto" />
+                </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60 font-mono text-xs text-slate-700 dark:text-slate-300">
               {refreshing ? (
                 <tr>
-                  <td colSpan={7} className="py-10 text-center text-slate-400">
+                  <td colSpan={8} className="py-10 text-center text-slate-400">
                     <RefreshCw className="w-6 h-6 text-blue-400 mx-auto mb-2 animate-spin" />
                     <span>Actualisation en cours…</span>
                   </td>
                 </tr>
               ) : filteredLogs.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="py-12 text-center text-slate-400">
+                  <td colSpan={8} className="py-12 text-center text-slate-400">
                     <Terminal className="w-8 h-8 text-slate-300 dark:text-slate-700 mx-auto mb-3 animate-pulse" />
                     <span>Aucun log ne correspond aux filtres saisis.</span>
                   </td>
                 </tr>
               ) : (
-                filteredLogs.map((log) => {
+                filteredLogs.map((log, idx) => {
                   const isExpanded = selectedLogId === log.raw_log_id;
+                  const isFlagged = flaggedIds.has(log.raw_log_id);
 
                   const severityConfig =
                     log.severity === "critical"
@@ -562,10 +636,16 @@ export default function LogsView() {
                   };
 
                   return (
-                    <React.Fragment key={log.raw_log_id}>
+                    <React.Fragment key={log.raw_log_id || `log-${idx}`}>
                       <tr
                         onClick={() => setSelectedLogId(isExpanded ? null : log.raw_log_id)}
-                        className={`hover:bg-slate-50 dark:hover:bg-slate-800/20 transition-all cursor-pointer ${isExpanded ? "bg-slate-50 dark:bg-slate-800/10" : ""}`}
+                        className={`transition-all cursor-pointer ${
+                          isFlagged
+                            ? "bg-amber-50 dark:bg-amber-900/10 hover:bg-amber-100/80 dark:hover:bg-amber-900/20"
+                            : isExpanded
+                            ? "bg-slate-50 dark:bg-slate-800/10 hover:bg-slate-100 dark:hover:bg-slate-800/20"
+                            : "hover:bg-slate-50 dark:hover:bg-slate-800/20"
+                        }`}
                       >
                         <td className="py-2.5 px-6 text-center text-slate-400 shrink-0 select-none">
                           {isExpanded ? <ChevronUp className="w-3.5 h-3.5 text-blue-500" /> : <ChevronDown className="w-3.5 h-3.5" />}
@@ -590,22 +670,54 @@ export default function LogsView() {
                             {severityConfig.text}
                           </span>
                         </td>
+                        <td className="py-2.5 px-3 text-center" onClick={(e) => e.stopPropagation()}>
+                          <button
+                            onClick={(e) => toggleFlag(log.raw_log_id, e)}
+                            title={isFlagged ? "Retirer le signalement" : "Marquer comme suspect"}
+                            className={`p-1 rounded transition-colors ${
+                              isFlagged
+                                ? "text-amber-500 hover:text-amber-400"
+                                : "text-slate-300 hover:text-amber-500 dark:text-slate-600 dark:hover:text-amber-500"
+                            }`}
+                          >
+                            <Flag className={`w-3.5 h-3.5 ${isFlagged ? "fill-current" : ""}`} />
+                          </button>
+                        </td>
                       </tr>
 
-                      {/* Expandable JSON Detail View */}
+                      {/* Expandable structured detail view */}
                       {isExpanded && (
                         <tr>
-                          <td colSpan={7} className="p-0 bg-slate-50/50 dark:bg-slate-900/10">
-                            <div className="px-12 py-5 border-t border-b border-slate-100 dark:border-slate-800/60 text-slate-850 dark:text-slate-200 font-mono text-[11px] leading-relaxed">
+                          <td colSpan={8} className="p-0 bg-slate-50/50 dark:bg-slate-900/10">
+                            <div className="px-12 py-5 border-t border-b border-slate-100 dark:border-slate-800/60">
                               <div className="flex items-center justify-between mb-3 text-[10px] uppercase text-slate-400 dark:text-slate-500 font-bold tracking-wider">
-                                <span>Informations détaillées du document de log (Elasticsearch Entry)</span>
                                 <span className="flex items-center gap-1.5">
-                                  <Eye className="w-3.5 h-3.5" /> ELASTIC_INDEX_READY
+                                  <Eye className="w-3.5 h-3.5" /> Détail de l'événement
                                 </span>
+                                <span className="font-mono">{log.raw_log_id}</span>
                               </div>
-                              <pre className="bg-white dark:bg-slate-950 p-4 rounded-xl border border-slate-200 dark:border-slate-800 overflow-x-auto text-slate-800 dark:text-slate-300 max-h-60 shadow-inner">
-                                {JSON.stringify(log, null, 2)}
-                              </pre>
+                              <div className="bg-white dark:bg-slate-950 rounded-xl border border-slate-200 dark:border-slate-800 overflow-hidden text-xs font-mono">
+                                {[
+                                  { label: "Message brut", value: log.raw_message },
+                                  { label: "Hôte",         value: log.host },
+                                  { label: "Action",       value: log.event_action },
+                                  { label: "IP source",    value: log.source_ip },
+                                  { label: "Criticité",    value: log.severity },
+                                  { label: "Horodatage",   value: log["@timestamp"] },
+                                ].map(({ label, value }) => (
+                                  <div
+                                    key={label}
+                                    className="flex border-b border-slate-100 dark:border-slate-800 last:border-0"
+                                  >
+                                    <div className="w-32 shrink-0 px-4 py-2.5 bg-slate-50 dark:bg-slate-900 text-[10px] font-bold uppercase tracking-wide text-slate-400 dark:text-slate-500">
+                                      {label}
+                                    </div>
+                                    <div className="px-4 py-2.5 text-slate-700 dark:text-slate-300 break-all leading-relaxed">
+                                      {value || "—"}
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
                             </div>
                           </td>
                         </tr>

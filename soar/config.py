@@ -31,5 +31,8 @@ CELERY_BROKER = os.getenv("CELERY_BROKER")
 CONFIRM_DELAY_SECONDS = int(os.getenv("CONFIRM_DELAY_SECONDS", "60"))
 HEARTBEAT_INTERVAL_SECONDS = int(os.getenv("HEARTBEAT_INTERVAL_SECONDS", "60"))
 
+# PostgreSQL
+PG_DSN: str = os.getenv("PG_DSN", "")
+
 # Alert IDs annulés avant exécution (mode CONFIRM) — état en mémoire
 CANCELLED_ALERTS: set = set()

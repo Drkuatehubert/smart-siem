@@ -1,64 +1,31 @@
-﻿"""
-service.py â€” Logique mÃ©tier de gestion des utilisateurs (durcie)
-
-Responsable : Chef de Projet & SÃ©curitÃ©
-Exigences : RF-SEC-02, RF-SEC-04
-
-Fonctions exposÃ©es :
-  * list_users          â€” pagination (capÃ©e)
-  * get_user_by_id      â€” fetch unique
-  * create_user         â€” unicitÃ© username + hachage + insertion
-  * update_user         â€” patch partiel (last-admin guard)
-  * delete_user         â€” delete (last-admin guard)
-  * set_user_active     â€” active/dÃ©sactive (utilisÃ© par SOAR disable_account)
-  * count_active_admins â€” utilisÃ© par last-admin guard et dashboard
-"""
-
+"""service.py – Gestion des utilisateurs via PostgreSQL."""
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+import logging
+import secrets
+import string
+from typing import Any, Dict, Optional
 
-from fastapi import HTTPException, status
+from fastapi import HTTPException
 
-from app.config import settings
-from app.core.elasticsearch import get_es_client
-from app.core.security import hash_password, verify_password
-from app.core.rbac import Role
+from app.core.postgres import get_pg_pool
+from app.core.pg_utils import serialize_row
+from app.core.security import hash_password
 
-IDX = "idx-users"
+logger = logging.getLogger("users.service")
 
-# Champs sensibles â€” JAMAIS retournÃ©s en sortie
-_SENSITIVE = {"password_hash", "password_history", "mfa_pending_secret"}
-
-
-def _sanitize(doc: Dict[str, Any]) -> Dict[str, Any]:
-    for k in _SENSITIVE:
-        doc.pop(k, None)
-    return doc
-
-
-# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-# Lecture
-# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 async def list_users(page: int = 1, size: int = 50) -> Dict[str, Any]:
-    """Liste paginÃ©e des utilisateurs. `size` bornÃ©e Ã  500."""
     size = max(1, min(size, 500))
-    from app.core.postgres import get_pg_pool
-    from app.core.pg_utils import serialize_row
-
     offset = (page - 1) * size
     pool = await get_pg_pool()
     async with pool.acquire() as conn:
         rows = await conn.fetch(
-            """SELECT id, username, email, role, mfa_enabled, org_scope, is_active,
-                      last_login_at, failed_login_count, locked_until, created_at, created_by
-               FROM users
-               ORDER BY created_at DESC NULLS LAST
-               LIMIT $1 OFFSET $2""",
-            size,
-            offset,
+            """SELECT id, username, email, role::text AS role, mfa_enabled, org_scope,
+                      is_active, last_login_at, failed_login_count, locked_until,
+                      created_at, created_by
+               FROM users ORDER BY created_at DESC NULLS LAST LIMIT $1 OFFSET $2""",
+            size, offset,
         )
         total = await conn.fetchval("SELECT COUNT(*) FROM users")
     return {
@@ -70,14 +37,12 @@ async def list_users(page: int = 1, size: int = 50) -> Dict[str, Any]:
 
 
 async def get_user_by_id(user_id: str) -> Optional[Dict[str, Any]]:
-    from app.core.postgres import get_pg_pool
-    from app.core.pg_utils import serialize_row
-
     pool = await get_pg_pool()
     async with pool.acquire() as conn:
         row = await conn.fetchrow(
-            """SELECT id, username, email, role, mfa_enabled, org_scope, is_active,
-                      last_login_at, failed_login_count, locked_until, created_at, created_by
+            """SELECT id, username, email, role::text AS role, mfa_enabled, org_scope,
+                      is_active, last_login_at, failed_login_count, locked_until,
+                      created_at, created_by
                FROM users WHERE id = $1::uuid""",
             user_id,
         )
@@ -85,89 +50,201 @@ async def get_user_by_id(user_id: str) -> Optional[Dict[str, Any]]:
 
 
 async def count_active_admins() -> int:
-    from app.core.postgres import get_pg_pool
-
     pool = await get_pg_pool()
     async with pool.acquire() as conn:
         return await conn.fetchval(
-            """SELECT COUNT(*) FROM users
-               WHERE is_active = true
-                 AND LOWER(role) IN ('admin', 'administrateur')"""
+            "SELECT COUNT(*) FROM users WHERE is_active = true AND role = 'admin'::user_role"
         )
 
-
-# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-# Ã‰criture
-# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 async def create_user(data: Dict[str, Any]) -> Dict[str, Any]:
-    es = get_es_client()
-    username = data["username"].lower()
+    pool = await get_pg_pool()
+    mfa_secret = "".join(
+        secrets.choice(string.ascii_uppercase + string.digits) for _ in range(32)
+    )
+    raw_password = data.get("password", "")
+    role = data.get("role", "analyst")
 
-    # UnicitÃ© username
-    exists = await es.exists(index=IDX, id=username)
-    if exists:
-        raise HTTPException(status_code=409, detail="Nom d'utilisateur dÃ©jÃ  pris")
-
-    raw_password = data.pop("password")
-    doc: Dict[str, Any] = {
-        **data,
-        "username": username,
-        "password_hash": hash_password(raw_password),
-        "is_active": data.get("is_active", True),
-        "created_at": datetime.now(timezone.utc).isoformat(),
-        "last_login_at": None,
-        "locked_until": None,
-        "must_reset_password": False,
-        "password_history": [],
-    }
-    res = await es.index(index=IDX, id=username, document=doc, refresh="wait_for")
-    return {"id": res["_id"], **_sanitize(doc)}
-
-
-async def update_user(user_id: str, patch: Dict[str, Any]) -> Dict[str, Any]:
-    es = get_es_client()
-    patch = {k: v for k, v in patch.items() if v is not None}
-
-    # Garde "last admin" si on touche au rÃ´le admin ou Ã  is_active
-    if "role_id" in patch or "is_active" in patch:
-        current = await get_user_by_id(user_id)
-        if not current:
-            raise HTTPException(status_code=404, detail="Utilisateur introuvable")
-        was_admin_active = (current.get("role_id") == Role.ADMINISTRATEUR and current.get("is_active", True))
-        will_be_admin_active = (
-            patch.get("role_id", current.get("role_id")) == Role.ADMINISTRATEUR
-            and patch.get("is_active", current.get("is_active", True))
-        )
-        if was_admin_active and not will_be_admin_active:
-            count = await count_active_admins()
-            if count <= 1:
+    async with pool.acquire() as conn:
+        try:
+            row = await conn.fetchrow(
+                """INSERT INTO users
+                   (username, email, hashed_password, role, mfa_secret, mfa_enabled,
+                    is_active, org_scope)
+                   VALUES ($1, $2, $3, $4::user_role, $5, $6, true, $7)
+                   RETURNING id, username, email, role::text AS role, mfa_enabled,
+                             is_active, org_scope, last_login_at, failed_login_count,
+                             locked_until, created_at""",
+                data["username"],
+                data.get("email"),
+                hash_password(raw_password),
+                role,
+                mfa_secret,
+                bool(data.get("mfa_enabled", False)),
+                data.get("org_scope"),
+            )
+        except Exception as exc:
+            err = str(exc)
+            if any(k in err for k in ("uq_users_username", "uq_users_email",
+                                       "UniqueViolation", "duplicate key")):
                 raise HTTPException(
-                    status_code=409,
-                    detail="Impossible de retirer le dernier administrateur actif",
+                    status_code=409, detail="Nom d'utilisateur ou email déjà pris"
                 )
+            raise
+    return serialize_row(row)
 
+
+async def update_user(user_id: str, patch: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    patch = {k: v for k, v in patch.items() if v is not None}
     if not patch:
-        return await get_user_by_id(user_id)  # type: ignore[return-value]
+        return await get_user_by_id(user_id)
 
-    await es.update(index=IDX, id=user_id, doc=patch, refresh="wait_for")
-    return await get_user_by_id(user_id)  # type: ignore[return-value]
+    allowed = {"email", "role", "org_scope", "is_active"}
+    safe = {k: v for k, v in patch.items() if k in allowed}
+    if not safe:
+        return await get_user_by_id(user_id)
+
+    pool = await get_pg_pool()
+    sets: list[str] = []
+    params: list[Any] = []
+    for key, val in safe.items():
+        params.append(val)
+        if key == "role":
+            sets.append(f"role = ${len(params)}::user_role")
+        else:
+            sets.append(f"{key} = ${len(params)}")
+
+    params.append(user_id)
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow(
+            f"""UPDATE users SET {", ".join(sets)}
+                WHERE id = ${len(params)}::uuid
+                RETURNING id, username, email, role::text AS role, mfa_enabled,
+                          is_active, org_scope, last_login_at, failed_login_count,
+                          locked_until, created_at""",
+            *params,
+        )
+    return serialize_row(row) if row else None
 
 
 async def delete_user(user_id: str) -> None:
-    es = get_es_client()
-    user = await get_user_by_id(user_id)
-    if not user:
+    pool = await get_pg_pool()
+    async with pool.acquire() as conn:
+        result = await conn.execute(
+            "DELETE FROM users WHERE id = $1::uuid", user_id
+        )
+    if result == "DELETE 0":
         raise HTTPException(status_code=404, detail="Utilisateur introuvable")
-    if user.get("role_id") == Role.ADMINISTRATEUR and user.get("is_active", True):
-        count = await count_active_admins()
-        if count <= 1:
-            raise HTTPException(
-                status_code=409,
-                detail="Impossible de supprimer le dernier administrateur actif",
-            )
-    await es.delete(index=IDX, id=user_id, refresh="wait_for")
 
 
-async def set_user_active(user_id: str, is_active: bool) -> Dict[str, Any]:
-    return await update_user(user_id, {"is_active": is_active})
+async def set_user_active(user_id: str, is_active: bool) -> Optional[Dict[str, Any]]:
+    pool = await get_pg_pool()
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow(
+            """UPDATE users SET is_active = $1
+               WHERE id = $2::uuid
+               RETURNING id, username, email, role::text AS role, mfa_enabled,
+                         is_active, org_scope, last_login_at, failed_login_count,
+                         locked_until, created_at""",
+            is_active, user_id,
+        )
+    return serialize_row(row) if row else None
+
+
+async def update_role(user_id: str, role: str) -> Dict[str, Any]:
+    pool = await get_pg_pool()
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow(
+            """UPDATE users SET role = $1::user_role
+               WHERE id = $2::uuid
+               RETURNING id, username, email, role::text AS role, mfa_enabled,
+                         is_active, org_scope, last_login_at, failed_login_count,
+                         locked_until, created_at""",
+            role, user_id,
+        )
+    if not row:
+        raise HTTPException(status_code=404, detail="Utilisateur introuvable")
+    return serialize_row(row)
+
+
+async def reset_password(user_id: str) -> Dict[str, Any]:
+    chars = string.ascii_letters + string.digits + "!@#"
+    temp_pw = "".join(secrets.choice(chars) for _ in range(12))
+    pool = await get_pg_pool()
+    async with pool.acquire() as conn:
+        result = await conn.execute(
+            """UPDATE users SET hashed_password = $1, must_change_password = true
+               WHERE id = $2::uuid""",
+            hash_password(temp_pw),
+            user_id,
+        )
+    if result == "UPDATE 0":
+        raise HTTPException(status_code=404, detail="Utilisateur introuvable")
+    return {"temp_password": temp_pw}
+
+
+async def get_user_activity(user_id: str) -> Dict[str, Any]:
+    pool = await get_pg_pool()
+    async with pool.acquire() as conn:
+        stats = await conn.fetchrow(
+            """SELECT
+               COUNT(*) FILTER (WHERE action = 'user_login' AND result = 'success') AS logins_ok,
+               COUNT(*) FILTER (WHERE action = 'user_login' AND result != 'success') AS logins_fail,
+               COUNT(*) FILTER (WHERE action = 'alert_acknowledged') AS alerts_ack,
+               COUNT(*) FILTER (WHERE action = 'playbook_executed') AS soar_actions,
+               COUNT(*) FILTER (WHERE action IN ('log_exported','report_generated')) AS exports
+               FROM audit_logs
+               WHERE user_id = $1::uuid
+               AND performed_at > NOW() - INTERVAL '7 days'""",
+            user_id,
+        )
+        days_rows = await conn.fetch(
+            """SELECT to_char(performed_at AT TIME ZONE 'UTC', 'Dy') AS day,
+                      COUNT(*) AS cnt
+               FROM audit_logs
+               WHERE user_id = $1::uuid
+               AND performed_at > NOW() - INTERVAL '7 days'
+               GROUP BY 1
+               ORDER BY MIN(performed_at)""",
+            user_id,
+        )
+        recent = await conn.fetch(
+            """SELECT action::text, result::text, resource_type, resource_id, performed_at
+               FROM audit_logs
+               WHERE user_id = $1::uuid
+               ORDER BY performed_at DESC LIMIT 10""",
+            user_id,
+        )
+
+    lf = int(stats["logins_fail"] or 0)
+    la = int(stats["alerts_ack"] or 0)
+    score = min(100, lf * 10 + (0 if la > 0 else 5))
+
+    return {
+        "score": score,
+        "level": (
+            "critique" if score > 50
+            else "élevé" if score > 30
+            else "modéré" if score > 10
+            else "faible"
+        ),
+        "logins_success": int(stats["logins_ok"] or 0),
+        "logins_failed": lf,
+        "alerts_acknowledged": la,
+        "soar_actions": int(stats["soar_actions"] or 0),
+        "exports": int(stats["exports"] or 0),
+        "activity_by_day": [
+            {"day": r["day"], "count": int(r["cnt"])} for r in days_rows
+        ],
+        "recent_actions": [
+            {
+                "time": r["performed_at"].isoformat() if r["performed_at"] else "",
+                "action": r["action"],
+                "result": r["result"],
+                "detail": " ".join(
+                    filter(None, [r["resource_type"], r["resource_id"]])
+                ),
+            }
+            for r in recent
+        ],
+    }

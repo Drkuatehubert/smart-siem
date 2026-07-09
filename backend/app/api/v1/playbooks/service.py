@@ -1,7 +1,11 @@
 import json as _json
+import logging
+from typing import Any
 
 from app.core.postgres import get_pg_pool
 from app.core.pg_utils import serialize_row
+
+logger = logging.getLogger("playbooks.service")
 
 _JSONB_PLAYBOOK_COLS = ("parameters",)
 
@@ -99,3 +103,79 @@ async def list_playbooks() -> list[dict]:
     except Exception:
         pass
     return _SOAR_FALLBACK
+
+
+async def get_playbook_by_id(playbook_id: str) -> dict | None:
+    # Chercher dans les playbooks hardcodés en premier
+    for pb in _SOAR_FALLBACK:
+        if pb["id"] == playbook_id:
+            return pb
+
+    # Puis dans PostgreSQL
+    try:
+        pool = await get_pg_pool()
+        async with pool.acquire() as conn:
+            row = await conn.fetchrow(
+                "SELECT * FROM playbooks WHERE id = $1::uuid", playbook_id
+            )
+        if row:
+            return _fix_jsonb(serialize_row(row))
+    except Exception as exc:
+        logger.warning("get_playbook_by_id PG échoué : %s", exc)
+
+    return None
+
+
+async def create_playbook(data: dict[str, Any]) -> dict:
+    """Insère un nouveau playbook dans PostgreSQL et retourne la ligne créée."""
+    pool = await get_pg_pool()
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow(
+            """INSERT INTO playbooks
+               (name, description, action_type, execution_mode,
+                parameters, target_type, confirmation_timeout_seconds,
+                rollback_supported, is_active)
+               VALUES ($1, $2, $3, $4::exec_mode,
+                       $5::jsonb, $6, $7, $8, $9)
+               RETURNING *""",
+            data["name"],
+            data.get("description", ""),
+            data["action_type"],
+            data.get("execution_mode", "CONFIRM"),
+            _json.dumps(data.get("parameters", {})),
+            data.get("target_type") or None,
+            max(1, int(data.get("confirmation_timeout_seconds", 300))),
+            bool(data.get("rollback_supported", False)),
+            bool(data.get("is_active", True)),
+        )
+    return _fix_jsonb(serialize_row(row))
+
+
+async def trigger_playbook(playbook_id: str, triggered_by: str) -> dict:
+    """Enregistre une exécution de playbook et retourne le statut."""
+    pb = await get_playbook_by_id(playbook_id)
+    if pb is None:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=404, detail="Playbook introuvable")
+
+    execution_mode = pb.get("execution_mode", "CONFIRM")
+
+    # Log de l'exécution en PG si possible
+    try:
+        pool = await get_pg_pool()
+        async with pool.acquire() as conn:
+            await conn.execute(
+                """INSERT INTO playbook_executions
+                   (playbook_id, triggered_by, execution_mode, target_value, status)
+                   VALUES ($1::uuid, $2::uuid, $3::exec_mode, 'manual', 'pending')""",
+                playbook_id, triggered_by, execution_mode,
+            )
+    except Exception as exc:
+        logger.warning("Enregistrement exécution playbook PG échoué (non bloquant) : %s", exc)
+
+    return {
+        "playbook_id":     playbook_id,
+        "playbook_name":   pb.get("name"),
+        "execution_mode":  execution_mode,
+        "status":          "awaiting_confirm" if execution_mode == "CONFIRM" else "triggered",
+    }

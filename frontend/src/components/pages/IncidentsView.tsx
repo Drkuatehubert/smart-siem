@@ -9,11 +9,14 @@ import {
   Clock,
   User,
   CheckCircle,
+  XCircle,
   AlertCircle,
   Briefcase,
   AlertTriangle,
   FileText,
   UserPlus,
+  Zap,
+  X,
 } from "lucide-react";
 import api from "../../Services/api";
 import type { Incident, UserRole } from "../../types";
@@ -27,10 +30,17 @@ export default function IncidentsView({ activeRole }: IncidentsViewProps) {
   const [incidents, setIncidents] = useState<Incident[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedIncId, setSelectedIncId] = useState<string | null>(null);
+  const [actionLoading, setActionLoading] = useState(false);
+  const [toast, setToast] = useState<{ msg: string; type: "success" | "error" } | null>(null);
 
   // Filters
   const [statusFilter, setStatusFilter] = useState<string>("ALL");
   const [severityFilter, setSeverityFilter] = useState<string>("ALL");
+
+  const showToast = (msg: string, type: "success" | "error" = "success") => {
+    setToast({ msg, type });
+    setTimeout(() => setToast(null), 3500);
+  };
 
   // Load incidents
   useEffect(() => {
@@ -58,18 +68,18 @@ export default function IncidentsView({ activeRole }: IncidentsViewProps) {
   // Handle status update
   const handleStatusChange = async (newStatus: Incident["status"]) => {
     if (!selectedIncId) return;
+    setActionLoading(true);
     try {
-      const updated = await api.updateIncidentStatus(
-        selectedIncId,
-        newStatus,
-        "Dominique",
-        activeRole,
-      );
+      await api.updateIncidentStatus(selectedIncId, newStatus, "Dominique", activeRole);
       setIncidents((prev) =>
-        prev.map((inc) => (inc.id === selectedIncId ? updated : inc)),
+        prev.map((inc) => inc.id === selectedIncId ? { ...inc, status: newStatus } : inc),
       );
+      showToast("Statut mis à jour avec succès");
     } catch (err) {
       console.error("Erreur changement statut", err);
+      showToast("Erreur lors de la mise à jour", "error");
+    } finally {
+      setActionLoading(false);
     }
   };
 
@@ -111,7 +121,23 @@ export default function IncidentsView({ activeRole }: IncidentsViewProps) {
   });
 
   return (
-    <div id="incidents-view" className="h-full flex overflow-hidden">
+    <div id="incidents-view" className="h-full flex overflow-hidden relative">
+      {/* Toast notification */}
+      {toast && (
+        <div className={`absolute top-4 right-4 z-50 flex items-center gap-2.5 px-4 py-3 rounded-xl shadow-lg border text-sm font-semibold transition-all ${
+          toast.type === "success"
+            ? "bg-emerald-50 dark:bg-emerald-950/60 border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300"
+            : "bg-red-50 dark:bg-red-950/60 border-red-200 dark:border-red-800 text-red-700 dark:text-red-300"
+        }`}>
+          {toast.type === "success"
+            ? <CheckCircle className="w-4 h-4 shrink-0" />
+            : <XCircle className="w-4 h-4 shrink-0" />}
+          <span>{toast.msg}</span>
+          <button onClick={() => setToast(null)} className="ml-1 opacity-60 hover:opacity-100">
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
       {/* LEFT PANEL: Incidents list with Search & Filters */}
       <div className="w-80 border-r border-slate-200 dark:border-slate-800 bg-white dark:bg-[#0b0f19] flex flex-col shrink-0 h-full">
         {/* Filters block */}
@@ -312,6 +338,48 @@ export default function IncidentsView({ activeRole }: IncidentsViewProps) {
 
             {/* Scrollable Contents: root cause, response actions, affected assets, IOC */}
             <div className="flex-1 overflow-y-auto p-6 space-y-6">
+              {/* Quick action buttons */}
+              {canEdit && (
+                <div className="bg-white dark:bg-[#1E293B] p-5 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm space-y-3">
+                  <h4 className="font-bold text-xs uppercase text-slate-400 font-mono flex items-center gap-2">
+                    <Zap className="w-4 h-4 text-amber-500" />
+                    Actions rapides
+                  </h4>
+                  {selectedIncident.alert_title && (
+                    <p className="text-[10px] font-mono text-slate-400">
+                      Alerte source :{" "}
+                      <span className="text-blue-400 font-semibold">{selectedIncident.alert_title}</span>
+                    </p>
+                  )}
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      onClick={() => handleStatusChange("in_progress")}
+                      disabled={actionLoading || selectedIncident.status === "in_progress" || selectedIncident.status === "resolved" || selectedIncident.status === "closed"}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+                    >
+                      <Briefcase className="w-3.5 h-3.5" />
+                      Prendre en charge
+                    </button>
+                    <button
+                      onClick={() => handleStatusChange("resolved")}
+                      disabled={actionLoading || selectedIncident.status === "resolved" || selectedIncident.status === "closed"}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+                    >
+                      <CheckCircle className="w-3.5 h-3.5" />
+                      Résoudre
+                    </button>
+                    <button
+                      onClick={() => handleStatusChange("pending_action")}
+                      disabled={actionLoading || selectedIncident.status === "pending_action" || selectedIncident.status === "resolved" || selectedIncident.status === "closed"}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-amber-600 text-white hover:bg-amber-700 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+                    >
+                      <AlertTriangle className="w-3.5 h-3.5" />
+                      Escalader
+                    </button>
+                  </div>
+                </div>
+              )}
+
               {/* Root Cause Card */}
               <div className="bg-white dark:bg-[#1E293B] p-5 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm space-y-3">
                 <h4 className="font-bold text-xs uppercase text-slate-400 font-mono flex items-center gap-2">

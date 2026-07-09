@@ -11,8 +11,8 @@ import {
   RefreshCw,
 } from "lucide-react";
 import {
-  AreaChart,
-  Area,
+  LineChart,
+  Line,
   XAxis,
   YAxis,
   CartesianGrid,
@@ -22,6 +22,21 @@ import {
   Bar,
   Legend,
 } from "recharts";
+
+const ACTION_COLORS: Record<string, string> = {
+  login_failed:       "#ef4444",
+  login_success:      "#22c55e",
+  firewall_block:     "#f97316",
+  port_scan:          "#a855f7",
+  process_create:     "#3b82f6",
+  file_access:        "#06b6d4",
+  network_connection: "#8b5cf6",
+  unknown:            "#94a3b8",
+};
+const FALLBACK_COLORS = [
+  "#3b82f6", "#ef4444", "#22c55e", "#f97316",
+  "#a855f7", "#06b6d4", "#f59e0b", "#ec4899",
+];
 import api from "../../Services/api";
 import type {
   LogEvent,
@@ -33,7 +48,7 @@ import type { DashboardSummary } from "../../Services/dashboardService";
 
 // ── Cache localStorage ────────────────────────────────────────────────────────
 const CACHE_KEY = "siem_dashboard_cache";
-const CACHE_TTL_MS = 30_000; // 30 secondes
+const CACHE_TTL_MS = 10_000; // 10 secondes
 
 interface DashboardCache {
   ts: number;
@@ -122,7 +137,11 @@ export default function DashboardView() {
   }, []);
 
   useEffect(() => {
-    loadData();
+    loadData(true);
+    const interval = setInterval(() => {
+      loadData(true);
+    }, 10000);
+    return () => clearInterval(interval);
   }, [loadData]);
 
   if (loading) {
@@ -172,14 +191,9 @@ export default function DashboardView() {
       ? 'border-amber-500'
       : 'border-rose-500';
 
-  const activityData =
-    summary?.log_volume_by_hour?.map((point) => ({
-      time: new Date(point.hour).toLocaleTimeString("fr-FR", {
-        hour: "2-digit",
-        minute: "2-digit",
-      }),
-      Volume: point.count,
-    })) ?? [];
+  const eventActions: string[] = summary?.event_actions ?? [];
+  const activityData: Record<string, string | number>[] =
+    summary?.log_volume_by_hour ?? [];
 
   const alertSeverityData =
     summary?.alerts_by_level?.map((item) => ({
@@ -340,54 +354,53 @@ export default function DashboardView() {
               dernières heures.
             </p>
           </div>
-          <div className="h-72 w-full font-mono text-xs">
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart
-                data={activityData}
-                margin={{ top: 10, right: 10, left: -20, bottom: 0 }}
-              >
-                <defs>
-                  <linearGradient id="colorNet" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.2} />
-                    <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
-                  </linearGradient>
-                  <linearGradient id="colorEnd" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#ef4444" stopOpacity={0.2} />
-                    <stop offset="95%" stopColor="#ef4444" stopOpacity={0} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid
-                  strokeDasharray="3 3"
-                  stroke="#e2e8f0"
-                  className="dark:hidden"
-                />
-                <CartesianGrid
-                  strokeDasharray="3 3"
-                  stroke="#334155"
-                  className="hidden dark:block"
-                />
-                <XAxis dataKey="time" stroke="#94a3b8" />
-                <YAxis stroke="#94a3b8" />
-                <Tooltip
-                  contentStyle={{
-                    backgroundColor: "#0f172a",
-                    borderRadius: "8px",
-                    border: "none",
-                    color: "#fff",
-                  }}
-                />
-                <Legend />
-                <Area
-                  type="monotone"
-                  dataKey="Volume"
-                  stroke="#3b82f6"
-                  fillOpacity={1}
-                  fill="url(#colorNet)"
-                  strokeWidth={2}
-                />
-              </AreaChart>
-            </ResponsiveContainer>
-          </div>
+          {activityData.length === 0 ? (
+            <div className="h-72 w-full flex items-center justify-center text-slate-400 dark:text-slate-600 text-sm font-mono">
+              Aucune donnée disponible
+            </div>
+          ) : (
+            <div className="h-72 w-full font-mono text-xs">
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart
+                  data={activityData}
+                  margin={{ top: 10, right: 10, left: -20, bottom: 0 }}
+                >
+                  <CartesianGrid
+                    strokeDasharray="3 3"
+                    stroke="#e2e8f0"
+                    className="dark:hidden"
+                  />
+                  <CartesianGrid
+                    strokeDasharray="3 3"
+                    stroke="#334155"
+                    className="hidden dark:block"
+                  />
+                  <XAxis dataKey="hour" stroke="#94a3b8" />
+                  <YAxis stroke="#94a3b8" />
+                  <Tooltip
+                    contentStyle={{
+                      backgroundColor: "#0f172a",
+                      borderRadius: "8px",
+                      border: "none",
+                      color: "#fff",
+                    }}
+                  />
+                  <Legend />
+                  {eventActions.map((action, idx) => (
+                    <Line
+                      key={action}
+                      type="monotone"
+                      dataKey={action}
+                      stroke={ACTION_COLORS[action] ?? FALLBACK_COLORS[idx % FALLBACK_COLORS.length]}
+                      strokeWidth={2}
+                      dot={false}
+                      connectNulls
+                    />
+                  ))}
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          )}
         </div>
 
         {/* Right: Alerts Breakdown by Severity (1/3 width) */}

@@ -38,20 +38,13 @@ async def _summary_from_pg_redis() -> dict:
     except Exception as exc:
         logger.warning("PG fallback dashboard counts échoué : %s", exc)
 
-    log_count = 0
-    try:
-        from app.core.redis_client import get_redis_client
-        r = get_redis_client()
-        log_count = await r.llen("recent_logs")
-    except Exception:
-        pass
-
     return {
-        "total_logs_24h":     log_count,
+        "total_logs_24h":     0,
         "total_alerts_open":  pg["total"],
         "critical_alerts":    pg["critical"],
         "alerts_by_level":    pg["by_level"],
         "log_volume_by_hour": [],
+        "event_actions":      [],
     }
 
 
@@ -72,20 +65,35 @@ async def get_summary() -> dict:
             index=_LOGS_INDEX,
             query={"range": {"@timestamp": {"gte": "now-24h"}}},
             aggs={
-                "logs_par_heure": {
+                "par_heure": {
                     "date_histogram": {
                         "field": "@timestamp",
                         "calendar_interval": "1h",
-                    }
+                        "format": "HH:mm",
+                    },
+                    "aggs": {
+                        "par_action": {
+                            "terms": {
+                                "field": "event_action",
+                                "size": 10,
+                                "missing": "unknown",
+                            }
+                        }
+                    },
                 }
             },
             size=0,
         )
-        hour_buckets = volume_res["aggregations"]["logs_par_heure"]["buckets"]
-        log_volume_by_hour = [
-            {"hour": b["key_as_string"], "count": b["doc_count"]}
-            for b in hour_buckets
-        ]
+        hour_buckets = volume_res["aggregations"]["par_heure"]["buckets"]
+        all_actions: set = set()
+        log_volume_by_hour = []
+        for b in hour_buckets:
+            point: dict = {"hour": b["key_as_string"]}
+            for ab in b["par_action"]["buckets"]:
+                point[ab["key"]] = ab["doc_count"]
+                all_actions.add(ab["key"])
+            log_volume_by_hour.append(point)
+        event_actions = sorted(all_actions)
     except Exception as exc:
         logger.warning("ES logs indisponible : %s", exc)
         return await _summary_from_pg_redis()
@@ -143,4 +151,5 @@ async def get_summary() -> dict:
         "critical_alerts":    critical_alerts,
         "alerts_by_level":    alerts_by_level,
         "log_volume_by_hour": log_volume_by_hour,
+        "event_actions":      event_actions,
     }

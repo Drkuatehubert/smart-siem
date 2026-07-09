@@ -1,22 +1,19 @@
-﻿"""
-router.py â€” Endpoints de gestion des utilisateurs (durcis)
-
-Responsable : Chef de Projet & SÃ©curitÃ©
-Exigences : RF-SEC-02, RF-SEC-04
+"""router.py – Endpoints de gestion des utilisateurs.
 
 Endpoints (tous sous /api/v1/users) :
-  GET    /                  â€” liste paginÃ©e (admin/auditeur)
-  GET    /{user_id}         â€” dÃ©tail (admin/auditeur)
-  POST   /                  â€” crÃ©ation (admin)
-  PATCH  /{user_id}         â€” modification partielle (admin, last-admin guard)
-  DELETE /{user_id}         â€” suppression (admin, last-admin guard)
-  POST   /{user_id}/disable â€” dÃ©sactivation (admin, SOAR-friendly)
-  POST   /{user_id}/enable  â€” rÃ©activation (admin)
+  GET    /                     – liste paginée (admin/auditeur)
+  GET    /{user_id}            – détail (admin/auditeur)
+  POST   /                     – création (admin)
+  PATCH  /{user_id}            – modification partielle (admin)
+  DELETE /{user_id}            – suppression (admin)
+  POST   /{user_id}/disable    – désactivation (admin)
+  POST   /{user_id}/enable     – réactivation (admin)
+  PATCH  /{user_id}/role       – changement de rôle (admin)
+  POST   /{user_id}/reset-password – reset MDP temporaire (admin)
+  GET    /{user_id}/activity   – profil de risque / activité (admin/auditeur)
 """
 
 from __future__ import annotations
-
-from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 
@@ -27,14 +24,18 @@ from app.api.v1.users.schemas import (
     SetActiveRequest,
     UserCreate,
     UserListResponse,
+    UserRoleUpdate,
     UserUpdate,
 )
 from app.api.v1.users.service import (
     create_user,
     delete_user,
+    get_user_activity,
     get_user_by_id,
     list_users,
+    reset_password,
     set_user_active,
+    update_role,
     update_user,
 )
 
@@ -60,6 +61,14 @@ async def get_users(
     return await list_users(page=page, size=size)
 
 
+@router.get("/{user_id}/activity")
+async def get_activity(
+    user_id: str,
+    current_user: dict = Depends(require_auditor),
+):
+    return await get_user_activity(user_id)
+
+
 @router.get("/{user_id}")
 async def get_user(
     user_id: str,
@@ -81,7 +90,7 @@ async def create(
     result = await create_user(body.model_dump())
     await write_audit_log(
         user_id=current_user["sub"],
-        action="creation_utilisateur",
+        action="user_created",
         ip_address=m["ip"],
         user_agent=m["ua"],
         request_id=m["rid"],
@@ -89,7 +98,53 @@ async def create(
         http_path=m["path"],
         target_entity="utilisateur",
         target_id=result["id"],
-        details={"role_id": result.get("role_id"), "org_scope": result.get("org_scope")},
+        details={"role": result.get("role"), "org_scope": result.get("org_scope")},
+    )
+    return result
+
+
+@router.patch("/{user_id}/role")
+async def change_role(
+    user_id: str,
+    request: Request,
+    body: UserRoleUpdate,
+    current_user: dict = Depends(require_admin),
+):
+    m = _meta(request)
+    result = await update_role(user_id, body.role)
+    await write_audit_log(
+        user_id=current_user["sub"],
+        action="role_changed",
+        ip_address=m["ip"],
+        user_agent=m["ua"],
+        request_id=m["rid"],
+        http_method=m["method"],
+        http_path=m["path"],
+        target_entity="utilisateur",
+        target_id=user_id,
+        details={"new_role": body.role},
+    )
+    return result
+
+
+@router.post("/{user_id}/reset-password")
+async def do_reset_password(
+    user_id: str,
+    request: Request,
+    current_user: dict = Depends(require_admin),
+):
+    m = _meta(request)
+    result = await reset_password(user_id)
+    await write_audit_log(
+        user_id=current_user["sub"],
+        action="password_changed",
+        ip_address=m["ip"],
+        user_agent=m["ua"],
+        request_id=m["rid"],
+        http_method=m["method"],
+        http_path=m["path"],
+        target_entity="utilisateur",
+        target_id=user_id,
     )
     return result
 
@@ -107,7 +162,7 @@ async def patch_user(
         raise HTTPException(status_code=404, detail="Utilisateur introuvable")
     await write_audit_log(
         user_id=current_user["sub"],
-        action="modification_utilisateur",
+        action="role_changed",
         ip_address=m["ip"],
         user_agent=m["ua"],
         request_id=m["rid"],
@@ -130,7 +185,7 @@ async def delete(
     await delete_user(user_id)
     await write_audit_log(
         user_id=current_user["sub"],
-        action="suppression_utilisateur",
+        action="user_deleted",
         ip_address=m["ip"],
         user_agent=m["ua"],
         request_id=m["rid"],
@@ -154,12 +209,13 @@ async def disable(
         raise HTTPException(status_code=404, detail="Utilisateur introuvable")
     await write_audit_log(
         user_id=current_user["sub"],
-        action="utilisateur_desactive",
+        action="role_changed",
         ip_address=m["ip"],
         user_agent=m["ua"],
         request_id=m["rid"],
         target_entity="utilisateur",
         target_id=user_id,
+        details={"is_active": False},
     )
     return result
 
@@ -177,11 +233,12 @@ async def enable(
         raise HTTPException(status_code=404, detail="Utilisateur introuvable")
     await write_audit_log(
         user_id=current_user["sub"],
-        action="utilisateur_reactive" if body.is_active else "utilisateur_desactive",
+        action="role_changed",
         ip_address=m["ip"],
         user_agent=m["ua"],
         request_id=m["rid"],
         target_entity="utilisateur",
         target_id=user_id,
+        details={"is_active": body.is_active},
     )
     return result

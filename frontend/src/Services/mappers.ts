@@ -42,9 +42,11 @@ export function mapFrontendRole(role: unknown): UserRole {
     admin: "admin",
     analyste: "analyst",
     analyst: "analyst",
+    rssi: "rssi",
+    auditeur: "auditor",
+    auditor: "auditor",
     lecteur: "reader",
     reader: "reader",
-    auditeur: "reader",
   };
   return map[key] ?? "reader";
 }
@@ -80,6 +82,8 @@ export function mapIncident(row: Row): Incident {
     root_cause: row.root_cause ? String(row.root_cause) : null,
     lessons_learned: row.lessons_learned ? String(row.lessons_learned) : null,
     ioc_indicators: asArray(row.ioc_indicators),
+    alert_title: row.alert_title ? String(row.alert_title) : undefined,
+    alert_level: row.alert_level ? String(row.alert_level) : undefined,
   };
 }
 
@@ -212,6 +216,7 @@ export function mapAlert(row: Row): Alert {
   return {
     id: String(row.id ?? ""),
     rule_id: String(row.rule_id ?? row.pg_alert_id ?? ""),
+    rule_name: row.rule_name ? String(row.rule_name) : null,
     title: String(row.title ?? ""),
     level: mapSeverity(row.level ?? row.niveau),
     status: String(row.status ?? row.statut ?? "open") as Alert["status"],

@@ -4,9 +4,12 @@ import logging
 from soar import config
 from soar.alerting import dispatch_notification
 from soar.clients.ad_client import ADClient
+from soar.db import save_playbook_execution
 from soar.playbooks.base_playbook import BasePlaybook
 
 logger = logging.getLogger(__name__)
+
+_PLAYBOOK_ID = "00000001-0000-0002-0000-000000000001"
 
 
 class Playbook2DisableAccount(BasePlaybook):
@@ -15,7 +18,7 @@ class Playbook2DisableAccount(BasePlaybook):
         if not username:
             return {"status": "skipped", "reason": "no username"}
 
-        alert_id = alert.get("id", "unknown")
+        alert_id = alert.get("alert_id") or alert.get("pg_alert_id") or alert.get("id", "unknown")
 
         await dispatch_notification(alert)
         logger.info(
@@ -41,6 +44,21 @@ class Playbook2DisableAccount(BasePlaybook):
             logger.info(
                 "Playbook2 — compte désactivé : '%s' | alert_id=%s", username, alert_id
             )
+
+            # Persistance en PostgreSQL (non bloquant)
+            await save_playbook_execution(
+                playbook_id=_PLAYBOOK_ID,
+                execution_mode="CONFIRM",
+                target_value=username,
+                result={"status": "success", "action": "disable_account", "username": username},
+                parameters_used={
+                    "username": username,
+                    "domain": str(config.AD_HOST or "ctu.local"),
+                    "action": "disable_account",
+                },
+                alert_id=alert_id if alert_id != "unknown" else None,
+            )
+
             return {
                 "status": "success",
                 "action": "disable_account",

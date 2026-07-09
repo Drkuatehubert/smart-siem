@@ -3,6 +3,7 @@ import React from 'react';
 import {
   LayoutDashboard,
   ShieldAlert,
+  AlertCircle,
   FileText,
   UserCheck,
   GitMerge,
@@ -29,7 +30,8 @@ interface SidebarProps {
 
 const ICON_MAP: Record<ModuleID, React.ComponentType<any>> = {
   dashboard: LayoutDashboard,
-  incidents: ShieldAlert,
+  alerts: ShieldAlert,
+  incidents: AlertCircle,
   logs: FileText,
   ueba: UserCheck,
   rules: GitMerge,
@@ -46,7 +48,8 @@ export default function Sidebar({ activeModule, setActiveModule, activeRole, onL
   // ✅ Filtrer les modules visibles en fonction du rôle
   const allModules = [
     { id: 'dashboard', label: 'Tableau de bord' },
-    { id: 'incidents', label: 'Alertes' },
+    { id: 'alerts', label: 'Alertes' },
+    { id: 'incidents', label: 'Incidents' },
     { id: 'logs', label: 'Investigation' },
     { id: 'agents', label: 'Explorateur de logs' },
     { id: 'rules', label: 'Règles' },

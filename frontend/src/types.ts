@@ -1,5 +1,5 @@
-// ===== RÔLES RBAC (conforme dictionnaire : reader, analyst, admin) =====
-export type UserRole = "reader" | "analyst" | "admin";
+// ===== RÔLES RBAC (reader, analyst, rssi, auditor, admin) =====
+export type UserRole = "reader" | "analyst" | "rssi" | "auditor" | "admin";
 
 // ===== 4.8 — users (PostgreSQL) =====
 export interface User {
@@ -107,6 +107,7 @@ export type AlertStatus =
 export interface Alert {
   id: string;
   rule_id: string;
+  rule_name: string | null;
   title: string;
   level: SeverityLevel;
   status: AlertStatus;
@@ -140,6 +141,8 @@ export interface Incident {
   root_cause: string | null;
   lessons_learned: string | null;
   ioc_indicators: IocIndicator[];
+  alert_title?: string;
+  alert_level?: string;
 }
 
 export interface ResponseAction {

@@ -1,63 +1,24 @@
-﻿"""
-schemas.py â€” SchÃ©mas Pydantic pour le journal d'audit (durcis)
-
-Responsable : Chef de Projet & SÃ©curitÃ©
-Index : idx-audit-log (append-only, ILM 7 ans)
-"""
-
+"""schemas.py – Schémas Pydantic pour le journal d'audit."""
 from __future__ import annotations
 
-from typing import List, Literal, Optional
+from typing import Any, List, Literal, Optional
 
 from pydantic import BaseModel, Field
 
 
-# Valeurs autorisÃ©es pour `action` (Ã©numÃ©ration ouverte, Ã©num Ã©tendue via Literal).
-# Toute autre valeur est acceptÃ©e mais tagged `unknown` cÃ´tÃ© affichage.
-AuditAction = Literal[
-    "connexion",
-    "connexion_reussie",
-    "connexion_echouee",
-    "deconnexion",
-    "compte_verrouille",
-    "reset_mdp_demande",
-    "reset_mdp_confirme",
-    "changement_mdp",
-    "changement_mdp_echec",
-    "mfa_setup_initie",
-    "mfa_active",
-    "mfa_code_invalide",
-    "creation_utilisateur",
-    "modification_utilisateur",
-    "suppression_utilisateur",
-    "utilisateur_desactive",
-    "utilisateur_reactive",
-    "autorisation_refusee",
-    "acces_hors_perimetre",
-    "consultation_alerte",
-    "traitement_alerte",
-    "modification_role",
-    "soar_playbook_execute",
-    "soar_playbook_echec",
-    "soar_kill_switch_active",
-    "export_audit",
-]
-
-
 class AuditLogOut(BaseModel):
     id: str
-    user_id: str
+    performed_at: Optional[str] = None
+    user_id: Optional[str] = None
+    username: Optional[str] = None
+    role_snapshot: Optional[str] = None
     action: str
+    result: Optional[str] = None
     ip_address: Optional[str] = None
     user_agent: Optional[str] = None
-    request_id: Optional[str] = None
-    target_entity: Optional[str] = None
-    target_id: Optional[str] = None
-    http_method: Optional[str] = None
-    http_path: Optional[str] = None
-    status: str = "success"
-    details: Optional[dict] = None
-    created_at: str
+    resource_type: Optional[str] = None
+    resource_id: Optional[str] = None
+    metadata: Optional[Any] = None
 
 
 class AuditLogListResponse(BaseModel):

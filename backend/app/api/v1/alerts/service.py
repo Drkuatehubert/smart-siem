@@ -1,8 +1,7 @@
 import json
 import logging
+from datetime import datetime, timezone
 from typing import Optional
-
-from app.core.elasticsearch import get_es_client
 
 logger = logging.getLogger("alerts.service")
 
@@ -30,7 +29,6 @@ def _pg_row_to_alert(row) -> dict:
     data = dict(row)
     source_ips = data.get("source_ips") or []
     affected_hosts = data.get("affected_hosts") or []
-    # asyncpg retourne JSONB déjà désérialisé, mais gérer le cas string par précaution
     if isinstance(source_ips, str):
         try:
             source_ips = json.loads(source_ips)
@@ -69,10 +67,10 @@ async def _list_alerts_from_pg(niveau, statut, page: int, size: int) -> dict:
         params: list = []
         if niveau:
             params.append(niveau.upper())
-            conditions.append(f"UPPER(a.level) = ${len(params)}")
+            conditions.append(f"UPPER(a.level::text) = ${len(params)}")
         if statut:
             params.append(statut)
-            conditions.append(f"a.status = ${len(params)}")
+            conditions.append(f"a.status::text = ${len(params)}")
         where = f"WHERE {' AND '.join(conditions)}" if conditions else ""
         count_params = list(params)
         params += [size, (page - 1) * size]
@@ -105,32 +103,7 @@ async def _list_alerts_from_pg(niveau, statut, page: int, size: int) -> dict:
 async def list_alerts(
     niveau=None, statut=None, page=1, size=50, org_scope=None
 ) -> dict:
-    es = get_es_client()
-    try:
-        must = []
-        if niveau:
-            must.append({"term": {"level": niveau}})
-        if statut:
-            must.append({"term": {"status": statut}})
-        q = {"bool": {"must": must}} if must else {"match_all": {}}
-        res = await es.search(
-            index=_ALERT_INDEX,
-            body={
-                "query": q,
-                "sort": [{"@timestamp": {"order": "desc"}}],
-                "from": (page - 1) * size,
-                "size": size,
-            },
-        )
-        return {
-            "total":   res["hits"]["total"]["value"],
-            "page":    page,
-            "size":    size,
-            "results": [_hit_to_alert(h) for h in res["hits"]["hits"]],
-        }
-    except Exception as exc:
-        logger.warning("ES indisponible pour list_alerts : %s", exc)
-        return await _list_alerts_from_pg(niveau, statut, page, size)
+    return await _list_alerts_from_pg(niveau, statut, page, size)
 
 
 async def get_alert(alert_id: str) -> Optional[dict]:
@@ -138,7 +111,8 @@ async def get_alert(alert_id: str) -> Optional[dict]:
     try:
         res = await es.search(
             index=_ALERT_INDEX,
-            body={"query": {"term": {"pg_alert_id": alert_id}}, "size": 1},
+            query={"term": {"pg_alert_id": alert_id}},
+            size=1,
         )
         hits = res["hits"]["hits"]
         if hits:
@@ -166,6 +140,46 @@ async def get_alert(alert_id: str) -> Optional[dict]:
         return None
 
 
+async def acknowledge_alert(alert_id: str, acknowledged_by: str) -> dict:
+    """Acquitte une alerte : status → 'investigating', enregistre l'analyste."""
+    now = datetime.now(timezone.utc).isoformat()
+    try:
+        from app.core.postgres import get_pg_pool
+        pool = await get_pg_pool()
+        async with pool.acquire() as conn:
+            await conn.execute(
+                """UPDATE alerts
+                   SET status = 'investigating',
+                       acknowledged_at = NOW(),
+                       acknowledged_by = $2::uuid
+                   WHERE id = $1::uuid""",
+                alert_id, acknowledged_by,
+            )
+    except Exception as exc:
+        logger.warning("PG acknowledge_alert échoué : %s", exc)
+
+    # ES mise à jour non-bloquante
+    try:
+        from app.core.elasticsearch import get_es_client
+        es = get_es_client()
+        res = await es.search(
+            index=_ALERT_INDEX,
+            query={"term": {"pg_alert_id": alert_id}},
+            size=1,
+        )
+        hits = res["hits"]["hits"]
+        if hits:
+            await es.update(
+                index=_ALERT_INDEX,
+                id=hits[0]["_id"],
+                doc={"status": "investigating"},
+            )
+    except Exception:
+        pass
+
+    return {"id": alert_id, "status": "investigating", "acknowledged_at": now}
+
+
 async def update_alert_status(
     alert_id: str,
     statut: str,
@@ -178,7 +192,7 @@ async def update_alert_status(
         pool = await get_pg_pool()
         async with pool.acquire() as conn:
             await conn.execute(
-                "UPDATE alerts SET status = $1 WHERE id = $2::uuid",
+                "UPDATE alerts SET status = $1::alert_status WHERE id = $2::uuid",
                 statut, alert_id,
             )
     except Exception as exc:
@@ -186,17 +200,19 @@ async def update_alert_status(
 
     # ES — mise à jour secondaire, non bloquante
     try:
+        from app.core.elasticsearch import get_es_client
         es = get_es_client()
         res = await es.search(
             index=_ALERT_INDEX,
-            body={"query": {"term": {"pg_alert_id": alert_id}}, "size": 1},
+            query={"term": {"pg_alert_id": alert_id}},
+            size=1,
         )
         hits = res["hits"]["hits"]
         if hits:
             await es.update(
                 index=_ALERT_INDEX,
                 id=hits[0]["_id"],
-                body={"doc": {"status": statut}},
+                doc={"status": statut},
             )
     except Exception as exc:
         logger.warning("ES update_alert_status échoué (non bloquant) : %s", exc)

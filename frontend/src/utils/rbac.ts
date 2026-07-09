@@ -2,6 +2,7 @@ import { type UserRole } from "../types";
 
 export type ModuleID =
   | "dashboard"
+  | "alerts"
   | "incidents"
   | "logs"
   | "ueba"
@@ -22,6 +23,7 @@ export interface ModuleConfig {
 
 export const SIEM_MODULES: ModuleConfig[] = [
   { id: "dashboard", label: "Tableau de bord", category: "Operational" },
+  { id: "alerts", label: "Alertes de Sécurité", category: "Operational" },
   { id: "incidents", label: "Gestion des Incidents", category: "Operational" },
   { id: "logs", label: "Analyseur de Logs", category: "Operational" },
   { id: "ueba", label: "UEBA (Anomalies)", category: "Operational" },
@@ -59,6 +61,7 @@ export const RBAC_POLICIES: Record<UserRole, RolePermissions> = {
   admin: {
     allowedModules: [
       "dashboard",
+      "alerts",
       "incidents",
       "logs",
       "ueba",
@@ -83,6 +86,7 @@ export const RBAC_POLICIES: Record<UserRole, RolePermissions> = {
   analyst: {
     allowedModules: [
       "dashboard",
+      "alerts",
       "incidents",
       "logs",
       "ueba",
@@ -103,9 +107,53 @@ export const RBAC_POLICIES: Record<UserRole, RolePermissions> = {
     canManageUsers: false,
     canEditAlerts: true,
   },
+  rssi: {
+    allowedModules: [
+      "dashboard",
+      "alerts",
+      "incidents",
+      "logs",
+      "ueba",
+      "rules",
+      "threat_intel",
+      "agents",
+      "vuln",
+      "playbooks",
+      "reports",
+      "compliance",
+    ],
+    canEditVuln: false,
+    canEditThreatIntel: false,
+    canEditCompliance: true,
+    canTriggerPlaybook: false,
+    canEditRules: false,
+    canEditIncidents: false,
+    canManageUsers: false,
+    canEditAlerts: false,
+  },
+  auditor: {
+    allowedModules: [
+      "dashboard",
+      "alerts",
+      "incidents",
+      "logs",
+      "vuln",
+      "reports",
+      "compliance",
+    ],
+    canEditVuln: false,
+    canEditThreatIntel: false,
+    canEditCompliance: false,
+    canTriggerPlaybook: false,
+    canEditRules: false,
+    canEditIncidents: false,
+    canManageUsers: false,
+    canEditAlerts: false,
+  },
   reader: {
     allowedModules: [
       "dashboard",
+      "alerts",
       "incidents",
       "logs",
       "ueba",
@@ -158,7 +206,20 @@ export function getRoleBadgeStyles(role: UserRole) {
         text: "text-emerald-600 dark:text-emerald-400",
         border: "border-emerald-200",
       };
+    case "rssi":
+      return {
+        bg: "bg-purple-500/10",
+        text: "text-purple-600 dark:text-purple-400",
+        border: "border-purple-200",
+      };
+    case "auditor":
+      return {
+        bg: "bg-amber-500/10",
+        text: "text-amber-600 dark:text-amber-400",
+        border: "border-amber-200",
+      };
     case "reader":
+    default:
       return {
         bg: "bg-blue-500/10",
         text: "text-blue-600 dark:text-blue-400",

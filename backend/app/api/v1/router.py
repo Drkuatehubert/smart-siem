@@ -16,6 +16,7 @@ from app.api.v1.playbooks.router import router as playbooks_router
 from app.api.v1.compliance.router import router as compliance_router
 from app.api.v1.vulnerabilities.router import router as vulnerabilities_router
 from app.api.v1.threat_intel.router import router as threat_intel_router
+from app.api.v1.soar.router import router as soar_router
 
 api_router = APIRouter()
 api_router.include_router(auth_router)
@@ -34,3 +35,4 @@ api_router.include_router(playbooks_router)
 api_router.include_router(compliance_router)
 api_router.include_router(vulnerabilities_router)
 api_router.include_router(threat_intel_router)
+api_router.include_router(soar_router, prefix="/soar")

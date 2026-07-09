@@ -17,36 +17,44 @@ volumes:
   redisdata:
   reports:
   pgdata:
+  esdata:
 
 services:
 
   # ── Infrastructure ──────────────────────────────────────────────────────────
-  #
-  # elasticsearch : commenté — on utilise l'instance des camarades via ngrok.
-  # URL configurée dans .env : ELASTICSEARCH_HOST=https://primate-stabilize-yin.ngrok-free.dev
-  #
-  # elasticsearch:
-  #   image: docker.elastic.co/elasticsearch/elasticsearch:8.13.0
-  #   container_name: siem-elasticsearch
-  #   environment:
-  #     - discovery.type=single-node
-  #     - ES_JAVA_OPTS=-Xms512m -Xmx512m
-  #     - ELASTIC_PASSWORD=${ELASTICSEARCH_PASSWORD}
-  #     - xpack.security.enabled=true
-  #   volumes:
-  #     - esdata:/usr/share/elasticsearch/data
-  #     - ./docker/elasticsearch/elasticsearch.yml:/usr/share/elasticsearch/config/elasticsearch.yml:ro
-  #     - ./docker/certs:/usr/share/elasticsearch/config/certs:ro
-  #   ports:
-  #     - "9200:9200"
-  #   networks:
-  #     - siem-network
-  #   healthcheck:
-  #     test: ["CMD-SHELL", "curl -sf ${ELASTICSEARCH_HOST}/_cluster/health || exit 1"]
-  #     interval: 30s
-  #     timeout: 10s
-  #     retries: 5
-  #   restart: unless-stopped
+
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.17.2
+    container_name: siem-elasticsearch
+    environment:
+      - discovery.type=single-node
+      - ES_JAVA_OPTS=-Xms512m -Xmx512m
+      - ELASTIC_PASSWORD=8-0Il66xvSeGnK=COySu
+      - xpack.security.enabled=true
+      - xpack.security.http.ssl.enabled=true
+      - xpack.security.http.ssl.keystore.path=elastic-certificates.p12
+      - xpack.security.transport.ssl.enabled=true
+      - xpack.security.transport.ssl.keystore.path=elastic-certificates.p12
+    command: >
+      bash -c "
+      if [ ! -f /usr/share/elasticsearch/config/elastic-certificates.p12 ]; then
+        elasticsearch-certutil ca --out /usr/share/elasticsearch/config/elastic-ca.p12 --pass '' &&
+        elasticsearch-certutil cert --ca /usr/share/elasticsearch/config/elastic-ca.p12 --ca-pass '' --out /usr/share/elasticsearch/config/elastic-certificates.p12 --pass ''
+      fi &&
+      /usr/local/bin/docker-entrypoint.sh eswrapper"
+    volumes:
+      - esdata:/usr/share/elasticsearch/data
+    ports:
+      - "9200:9200"
+    networks:
+      - siem-network
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf -k -u elastic:'8-0Il66xvSeGnK=COySu' https://localhost:9200/_cluster/health || exit 1"]
+      interval: 20s
+      timeout: 10s
+      retries: 10
+      start_period: 90s
+    restart: unless-stopped
 
   redis:
     image: redis:7-alpine
@@ -96,6 +104,10 @@ services:
     container_name: siem-normalizer
     env_file: .env
     environment:
+      - ELASTICSEARCH_HOST=https://elasticsearch:9200
+      - ELASTICSEARCH_USERNAME=elastic
+      - ELASTICSEARCH_PASSWORD=8-0Il66xvSeGnK=COySu
+      - ELASTICSEARCH_TLS_VERIFY=false
       - REDIS_HOST=redis
       - REDIS_PORT=6379
     ports:
@@ -114,10 +126,11 @@ services:
   backend:
     build: ./backend
     container_name: siem-backend
+    env_file: .env
     environment:
-      - ELASTICSEARCH_HOST=${ELASTICSEARCH_HOST}
-      - ELASTICSEARCH_USERNAME=${ELASTICSEARCH_USERNAME}
-      - ELASTICSEARCH_PASSWORD=${ELASTICSEARCH_PASSWORD}
+      - ELASTICSEARCH_HOST=https://elasticsearch:9200
+      - ELASTICSEARCH_USERNAME=elastic
+      - ELASTICSEARCH_PASSWORD=8-0Il66xvSeGnK=COySu
       - ELASTICSEARCH_TLS_VERIFY=false
       - REDIS_HOST=redis
       - REDIS_PORT=6379
@@ -135,6 +148,8 @@ services:
         condition: service_healthy
       postgres:
         condition: service_healthy
+      elasticsearch:
+        condition: service_healthy
     restart: unless-stopped
 
   # ── Moteur de corrélation MITRE ATT&CK ───────────────────────────────────────
@@ -148,9 +163,9 @@ services:
     container_name: siem-correlation
     env_file: .env
     environment:
-      - ES_HOST=${ELASTICSEARCH_HOST}
-      - ES_USER=${ELASTICSEARCH_USERNAME}
-      - ES_PASSWORD=${ELASTICSEARCH_PASSWORD}
+      - ES_HOST=https://elasticsearch:9200
+      - ES_USER=elastic
+      - ES_PASSWORD=8-0Il66xvSeGnK=COySu
       - PG_DSN=postgresql://postgres:felicia@postgres:5432/nafeh
     networks:
       - siem-network
@@ -158,6 +173,8 @@ services:
       postgres:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      elasticsearch:
         condition: service_healthy
     restart: unless-stopped
 
@@ -172,11 +189,16 @@ services:
     env_file: .env
     environment:
       - CELERY_BROKER=redis://redis:6379/0
-      - ES_HOST=${ELASTICSEARCH_HOST}
+      - ES_HOST=https://elasticsearch:9200
+      - PG_DSN=postgresql://postgres:felicia@postgres:5432/nafeh
     networks:
       - siem-network
     depends_on:
       redis:
+        condition: service_healthy
+      elasticsearch:
+        condition: service_healthy
+      postgres:
         condition: service_healthy
     restart: unless-stopped
 
@@ -187,11 +209,13 @@ services:
     container_name: siem-reporting
     env_file: .env
     environment:
-      - ELASTICSEARCH_HOST=${ELASTICSEARCH_HOST}
+      - ELASTICSEARCH_HOST=https://elasticsearch:9200
     volumes:
       - reports:/app/generated_reports
     networks:
       - siem-network
+    depends_on:
+      - elasticsearch
     restart: unless-stopped
 
   # ── Frontend React ────────────────────────────────────────────────────────────

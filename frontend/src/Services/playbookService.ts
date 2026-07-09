@@ -13,6 +13,11 @@ export class PlaybookService extends BaseService {
     return mapPlaybook(row);
   }
 
+  async createPlaybook(data: Record<string, unknown>): Promise<Playbook> {
+    const row = await this.request<Record<string, unknown>>("POST", "/playbooks", data);
+    return mapPlaybook(row);
+  }
+
   async triggerPlaybook(
     id: string,
     user: string,

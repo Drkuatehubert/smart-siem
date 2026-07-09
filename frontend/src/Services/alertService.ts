@@ -38,4 +38,11 @@ export class AlertService extends BaseService {
     );
     return mapAlert(row);
   }
+
+  async triggerSoar(id: string): Promise<{ status: string; alert_id: string }> {
+    return this.request<{ status: string; alert_id: string }>(
+      "POST",
+      `/alerts/${id}/trigger-soar`,
+    );
+  }
 }

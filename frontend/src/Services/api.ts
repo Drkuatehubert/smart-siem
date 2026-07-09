@@ -14,6 +14,7 @@ import { ReportService } from "./reportService";
 import { UserService } from "./userService";
 import { AuditLogService } from "./auditLogService";
 import { DashboardService } from "./dashboardService";
+import { SoarService } from "./soarService";
 
 // Create instances of all services
 const authService = new AuthService();
@@ -31,6 +32,7 @@ const reportService = new ReportService();
 const userService = new UserService();
 const auditLogService = new AuditLogService();
 const dashboardService = new DashboardService();
+const soarService = new SoarService();
 
 // Export a unified API object
 export const api = {
@@ -42,6 +44,8 @@ export const api = {
 
   // Logs (LogEvent)
   getLogs: logService.getLogs.bind(logService),
+  getLogsPage: logService.getLogsPage.bind(logService),
+  getEventActions: logService.getEventActions.bind(logService),
   getLogById: logService.getLogById.bind(logService),
   getRawLogs: logService.getRawLogs.bind(logService),
   getLogSources: logService.getLogSources.bind(logService),
@@ -51,6 +55,7 @@ export const api = {
   getAlertById: alertService.getAlertById.bind(alertService),
   acknowledgeAlert: alertService.acknowledgeAlert.bind(alertService),
   updateAlertStatus: alertService.updateAlertStatus.bind(alertService),
+  triggerSoar: alertService.triggerSoar.bind(alertService),
 
   // Incidents
   getIncidents: incidentService.getIncidents.bind(incidentService),
@@ -85,6 +90,7 @@ export const api = {
   // Playbooks
   getPlaybooks: playbookService.getPlaybooks.bind(playbookService),
   getPlaybookById: playbookService.getPlaybookById.bind(playbookService),
+  createPlaybook: playbookService.createPlaybook.bind(playbookService),
   triggerPlaybook: playbookService.triggerPlaybook.bind(playbookService),
 
   // Compliance
@@ -95,6 +101,7 @@ export const api = {
   // UEBA
   getUebaProfiles: uebaService.getProfiles.bind(uebaService),
   getUebaProfileByEntity: uebaService.getProfileByEntity.bind(uebaService),
+  computeUebaProfiles: uebaService.computeProfiles.bind(uebaService),
 
   // Reports
   getReports: reportService.getReports.bind(reportService),
@@ -105,12 +112,26 @@ export const api = {
   getUserById: userService.getUserById.bind(userService),
   createUser: userService.createUser.bind(userService),
   lockUser: userService.lockUser.bind(userService),
+  updateRole: userService.updateRole.bind(userService),
+  enableUser: userService.enableUser.bind(userService),
+  disableUser: userService.disableUser.bind(userService),
+  resetPassword: userService.resetPassword.bind(userService),
+  getUserActivity: userService.getUserActivity.bind(userService),
 
   // Audit Logs
   getAuditLogs: auditLogService.getAuditLogs.bind(auditLogService),
 
   // Dashboard
   getDashboardSummary: dashboardService.getSummary.bind(dashboardService),
+
+  // SOAR Management
+  getSoarHistory: soarService.getHistory.bind(soarService),
+  soarBlockIp: soarService.blockIp.bind(soarService),
+  soarDisableAccount: soarService.disableAccount.bind(soarService),
+  getBlockedIps: soarService.getBlockedIps.bind(soarService),
+  unblockIp: soarService.unblockIp.bind(soarService),
+  getDisabledAccounts: soarService.getDisabledAccounts.bind(soarService),
+  enableAccount: soarService.enableAccount.bind(soarService),
 };
 
 // Default export for backward compatibility

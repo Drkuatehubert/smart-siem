@@ -23,12 +23,18 @@ def _create_client() -> AsyncElasticsearch:
         "hosts": [settings.ELASTICSEARCH_HOST],
         "basic_auth": (settings.ELASTICSEARCH_USERNAME, settings.ELASTICSEARCH_PASSWORD),
         "verify_certs": settings.ELASTICSEARCH_TLS_VERIFY,
+        "ssl_show_warn": False,
         "request_timeout": settings.ELASTICSEARCH_REQUEST_TIMEOUT,
         "max_retries": settings.ELASTICSEARCH_MAX_RETRIES,
         "retry_on_timeout": False,
         "http_compress": True,
         "connections_per_node": 10,
         "sniff_on_start": False,
+        # Client v9 envoie compatible-with=9 ; ES 8.x n'accepte que 7 ou 8.
+        "headers": {
+            "Accept": "application/vnd.elasticsearch+json; compatible-with=8",
+            "Content-Type": "application/vnd.elasticsearch+json; compatible-with=8",
+        },
     }
     if settings.ELASTICSEARCH_CA_CERTS:
         kwargs["ca_certs"] = settings.ELASTICSEARCH_CA_CERTS

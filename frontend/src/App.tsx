@@ -10,6 +10,7 @@ import Header from './components/Header';
 // Security Views Modules
 import DashboardView from './components/pages/DashboardView';
 import IncidentsView from './components/pages/IncidentsView';
+import AlertsView from './components/pages/AlertsView';
 import LogsView from './components/pages/LogsView';
 import UebaView from './components/pages/UebaView';
 import RulesView from './components/pages/RulesView';
@@ -44,7 +45,7 @@ function isTokenValid(token: string): boolean {
 }
 
 function clearAuthStorage(): void {
-  ['siem_jwt_token', 'siem_refresh_token', 'siem_authenticated', 'siem_role', 'siem_email', 'siem_username']
+  ['siem_jwt_token', 'siem_refresh_token', 'siem_authenticated', 'siem_role', 'siem_email', 'siem_username', 'siem_active_module']
     .forEach(k => localStorage.removeItem(k));
 }
 
@@ -65,7 +66,14 @@ export default function App() {
   // isLoading reste false (JWT check est synchrone) — gardé pour extensions futures
   const [isLoading] = useState<boolean>(false);
 
-  const [activeModule, setActiveModule] = useState<ModuleID>('dashboard');
+  const [activeModule, setActiveModule] = useState<ModuleID>(() => {
+    return (localStorage.getItem('siem_active_module') as ModuleID) || 'dashboard';
+  });
+
+  const persistModule = (mod: ModuleID) => {
+    localStorage.setItem('siem_active_module', mod);
+    setActiveModule(mod);
+  };
 
   const [activeRole, setActiveRole] = useState<UserRole>(() => {
     return (localStorage.getItem('siem_role') as UserRole) || 'reader';
@@ -102,7 +110,7 @@ export default function App() {
   useEffect(() => {
     if (!isModuleAllowed(activeRole, activeModule)) {
       const allowed = RBAC_POLICIES[activeRole].allowedModules;
-      if (allowed.length > 0) setActiveModule(allowed[0]);
+      if (allowed.length > 0) persistModule(allowed[0]);
     }
   }, [activeRole]);
 
@@ -173,6 +181,7 @@ export default function App() {
 
     switch (activeModule) {
       case 'dashboard':     return <DashboardView />;
+      case 'alerts':        return <AlertsView activeRole={activeRole} setActiveModule={persistModule} />;
       case 'incidents':     return <IncidentsView activeRole={activeRole} />;
       case 'logs':          return <LogsView />;
       case 'ueba':          return <UebaView />;
@@ -190,7 +199,8 @@ export default function App() {
 
   const MODULE_METADATA: Record<ModuleID, { title: string; subtitle: string }> = {
     dashboard:   { title: 'Tableau de bord',          subtitle: 'Analyse et métriques globales de sécurité' },
-    incidents:   { title: 'Alertes',                  subtitle: 'Gestion et remédiation des incidents actifs' },
+    alerts:      { title: 'Alertes',                  subtitle: 'Détection et triage des alertes de sécurité' },
+    incidents:   { title: 'Incidents',                subtitle: 'Gestion et remédiation des incidents actifs' },
     logs:        { title: 'Investigation',             subtitle: 'Analyse de menaces en temps réel' },
     agents:      { title: 'Explorateur de logs',       subtitle: "Télémétrie et collecte d'agents" },
     rules:       { title: 'Règles',                    subtitle: 'Corrélation et logique de détection' },
@@ -209,7 +219,7 @@ export default function App() {
     <div id="siem-app-shell" className="flex h-screen w-screen overflow-hidden bg-[#F1F5F9] dark:bg-[#0F172A] text-slate-900 dark:text-slate-100 transition-colors duration-300 font-sans">
       <Sidebar
         activeModule={activeModule}
-        setActiveModule={setActiveModule}
+        setActiveModule={persistModule}
         activeRole={activeRole}
         onLogout={handleLogout}
       />
@@ -221,7 +231,7 @@ export default function App() {
           setActiveRole={setActiveRole}
           title={currentMeta.title}
           subtitle={currentMeta.subtitle}
-          setActiveModule={setActiveModule}
+          setActiveModule={persistModule}
         />
         <main id="console-viewport" className="flex-1 overflow-hidden relative">
           {renderActiveView()}

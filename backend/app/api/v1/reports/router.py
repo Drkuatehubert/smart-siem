@@ -36,11 +36,12 @@ async def _collect_report_data() -> dict:
         "rules": [],
         "logs": [],
         "agents": [],
+        "incidents": [],
         "alert_counts": {"total_open": 0, "critical": 0},
         "log_count": 0,
     }
 
-    # PostgreSQL : règles de corrélation + compteurs d'alertes
+    # PostgreSQL : règles de corrélation + compteurs d'alertes + incidents
     try:
         from app.core.postgres import get_pg_pool
         pool = await get_pg_pool()
@@ -58,6 +59,16 @@ async def _collect_report_data() -> dict:
                 "SELECT COUNT(*) FROM alerts WHERE status = 'open' AND UPPER(level) = 'CRITICAL'"
             ) or 0
             result["alert_counts"] = {"total_open": int(total_open), "critical": int(critical)}
+
+            inc_rows = await conn.fetch(
+                """SELECT i.id, i.title, i.severity::text AS severity,
+                          i.status::text AS status, i.opened_at, i.assigned_to,
+                          a.title AS alert_title
+                   FROM incidents i
+                   LEFT JOIN alerts a ON i.alert_id = a.id
+                   ORDER BY i.opened_at DESC LIMIT 20"""
+            )
+            result["incidents"] = [dict(r) for r in inc_rows]
     except Exception as exc:
         logger.warning("PG collect échoué (rapport) : %s", exc)
 
@@ -294,7 +305,50 @@ def _build_pdf(data: dict, analyst_username: str, period: str) -> bytes:
     story.append(agents_tbl)
     story.append(PageBreak())
 
-    # ── PAGE 5 : Pied de page audit ────────────────────────────────────────────
+    # ── PAGE 5 : Incidents actifs ──────────────────────────────────────────────
+
+    story.append(Paragraph("INCIDENTS ACTIFS", s_h2))
+    story.append(Paragraph("Source : PostgreSQL — table incidents (JOIN alerts)", s_src))
+
+    inc_rows_pdf = data.get("incidents", [])
+    STATUS_FR = {
+        "open": "Ouvert", "in_progress": "En cours",
+        "pending_action": "Action requise", "resolved": "Résolu", "closed": "Clos",
+    }
+    SEV_FR = {
+        "critical": "CRITIQUE", "high": "HAUTE",
+        "warning": "MOYENNE", "info": "BASSE",
+    }
+    inc_table_rows = [
+        [Paragraph(h, s_wbold) for h in
+         ["ID", "Titre", "Sévérité", "Statut", "Ouvert le", "Alerte source"]],
+    ]
+    for inc in inc_rows_pdf:
+        inc_id = str(inc.get("id") or "—")[:8]
+        title  = str(inc.get("title") or "—")[:35]
+        sev    = SEV_FR.get(str(inc.get("severity") or "").lower(), str(inc.get("severity") or "—").upper())
+        status = STATUS_FR.get(str(inc.get("status") or ""), str(inc.get("status") or "—"))
+        opened = str(inc.get("opened_at") or "—")[:16].replace("T", " ")
+        alert_t = str(inc.get("alert_title") or "—")[:30]
+        inc_table_rows.append([
+            Paragraph(inc_id, s_body),
+            Paragraph(title, s_body),
+            Paragraph(sev, s_body),
+            Paragraph(status, s_body),
+            Paragraph(opened, s_body),
+            Paragraph(alert_t, s_body),
+        ])
+    if len(inc_table_rows) == 1:
+        inc_table_rows.append([Paragraph("Aucun incident enregistré", s_body), *[""] * 5])
+
+    inc_tbl = Table(inc_table_rows, colWidths=[1.8*cm, 5*cm, 2.2*cm, 2.5*cm, 3*cm, 3.2*cm])
+    inc_tbl.setStyle(TableStyle(
+        _make_style_cmds(len(inc_table_rows), DARK_BLUE, LIGHT_GREY, MID_GREY)
+    ))
+    story.append(inc_tbl)
+    story.append(PageBreak())
+
+    # ── PAGE 6 : Pied de page audit ────────────────────────────────────────────
 
     story.append(Paragraph("PIED DE PAGE — TRAÇABILITÉ AUDIT", s_h2))
     story.append(HRFlowable(width="100%", thickness=1, color=MID_GREY, spaceAfter=16))
@@ -337,10 +391,16 @@ async def generate_pdf_report(
     current_user: dict = Depends(get_current_user),
 ):
     """Génère et retourne un rapport PDF professionnel en temps réel."""
+    from app.core.audit import write_audit_log
     analyst = current_user.get("username") or current_user.get("sub") or "Analyste"
     data = await _collect_report_data()
     pdf_bytes = _build_pdf(data, analyst, period)
     filename = f"smart-siem-report-{datetime.now().strftime('%Y-%m-%d')}.pdf"
+    await write_audit_log(
+        user_id=current_user.get("sub", ""),
+        action="report_generated",
+        details={"period": period, "analyst": analyst},
+    )
     return StreamingResponse(
         io.BytesIO(pdf_bytes),
         media_type="application/pdf",

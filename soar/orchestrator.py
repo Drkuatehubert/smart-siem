@@ -10,6 +10,22 @@ logger = logging.getLogger(__name__)
 _BRUTE_FORCE_RULES = {"brute_force_ssh", "brute_force_rdp", "port_scan", "T1110", "T1046"}
 _EXFIL_RULES = {"exfiltration", "dormant_account", "ueba_critical", "T1041", "T1078"}
 
+# IPs que l'on ne bloque jamais (loopback, SIEM interne, non-routable)
+_BLOCKED_PREFIXES = ("127.", "0.", "169.254.")
+_BLOCKED_IPS = {"0.0.0.0", "::1"}
+
+
+def _is_safe_to_block(ip: str) -> bool:
+    """Retourne False si l'IP est loopback, APIPA ou non-routable."""
+    if not ip:
+        return False
+    if ip in _BLOCKED_IPS:
+        return False
+    for prefix in _BLOCKED_PREFIXES:
+        if ip.startswith(prefix):
+            return False
+    return True
+
 
 async def handle_alert(alert: dict) -> dict:
     """
@@ -45,8 +61,14 @@ async def handle_alert(alert: dict) -> dict:
     # Playbook 1 — Blocage IP sur brute-force et scan
     rule_key = rule_id or alert.get("rule_name", "")
     if rule_key in _BRUTE_FORCE_RULES or "T1110" in rule_key or "brute" in rule_key.lower() or "Brute" in rule_key:
-        r1 = await Playbook1BlockIP().execute(alert)
-        resultats.append(r1)
+        source_ips = alert.get("source_ips", [])
+        ip_to_block = alert.get("source_ip") or (source_ips[0] if source_ips else "")
+        if not _is_safe_to_block(ip_to_block):
+            logger.warning("Playbook1 ignoré — IP non bloquable : %s", ip_to_block)
+            resultats.append({"status": "skipped", "reason": "IP loopback ignorée", "ip": ip_to_block})
+        else:
+            r1 = await Playbook1BlockIP().execute(alert)
+            resultats.append(r1)
 
     # Playbook 2 — Désactivation compte sur exfiltration et UEBA
     if rule_id in _EXFIL_RULES:

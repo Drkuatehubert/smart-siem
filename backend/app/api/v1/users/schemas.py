@@ -1,45 +1,28 @@
-﻿"""
-schemas.py â€” SchÃ©mas Pydantic pour la gestion des utilisateurs (durcis)
-
-Responsable : Chef de Projet & SÃ©curitÃ©
-Exigences : RF-SEC-02, RF-SEC-04
-
-Durcissements par rapport Ã  la version initiale :
-  * `role_id` est une `Literal[...]` â‡’ impossible de crÃ©er un utilisateur
-    avec un rÃ´le non reconnu (anti privilege-escalation) ;
-  * `password` a des bornes explicites et la politique `PASSWORD_*` est appliquÃ©e ;
-  * nouveaux schÃ©mas `UserUpdate`, `SetActiveRequest` ;
-  * `UserOut` n'expose jamais `password_hash` ni `password_history`.
-"""
-
 from __future__ import annotations
 
 from typing import List, Literal, Optional
 
-from pydantic import BaseModel, EmailStr, Field, field_validator
+from pydantic import BaseModel, EmailStr, Field
 
-from app.api.v1.auth.schemas import _validate_password_strength
-from app.core.rbac import Role
+DBRole = Literal["reader", "analyst", "rssi", "auditor", "admin"]
 
 
 class UserCreate(BaseModel):
-    """CrÃ©ation d'un utilisateur (admin uniquement)."""
-    username: str = Field(..., min_length=3, max_length=50, pattern=r"^[a-zA-Z0-9._-]+$")
-    email: Optional[EmailStr] = None
-    password: str = Field(..., min_length=1, max_length=4096)
-    role_id: Literal["lecteur", "analyste", "administrateur", "auditeur"] = Role.LECTEUR
+    username: str = Field(..., min_length=3, max_length=50)
+    email: EmailStr
+    password: str = Field(..., min_length=8)
+    role: DBRole = "analyst"
+    mfa_enabled: bool = False
     org_scope: Optional[str] = Field(default=None, max_length=64)
 
-    @field_validator("password")
-    @classmethod
-    def _check_strength(cls, v: str) -> str:
-        return _validate_password_strength(v)
+
+class UserRoleUpdate(BaseModel):
+    role: DBRole
 
 
 class UserUpdate(BaseModel):
-    """Mise Ã  jour partielle (PATCH /users/{id}). Tous champs optionnels."""
     email: Optional[EmailStr] = None
-    role_id: Optional[Literal["lecteur", "analyste", "administrateur", "auditeur"]] = None
+    role: Optional[DBRole] = None
     org_scope: Optional[str] = Field(default=None, max_length=64)
     is_active: Optional[bool] = None
 
@@ -49,14 +32,15 @@ class SetActiveRequest(BaseModel):
 
 
 class UserOut(BaseModel):
-    """Sortie publique â€” ne JAMAIS inclure password_hash."""
     id: str
     username: str
-    email: Optional[EmailStr] = None
-    role_id: str
+    email: Optional[str] = None
+    role: str
     org_scope: Optional[str] = None
     is_active: bool
     mfa_enabled: bool = False
+    failed_login_count: int = 0
+    locked_until: Optional[str] = None
     created_at: Optional[str] = None
     last_login_at: Optional[str] = None
 
