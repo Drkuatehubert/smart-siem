@@ -105,9 +105,13 @@ async def save_playbook_execution(
     result: dict,
     parameters_used: dict,
     alert_id: str | None = None,
+    status: str = "success",
 ) -> None:
     """Insère une ligne dans playbook_executions. Non bloquant en cas d'erreur."""
     import json
+
+    valid_statuses = {"pending", "awaiting_confirm", "running", "success", "failed", "cancelled", "rolled_back"}
+    pg_status = status if status in valid_statuses else "success"
 
     pool = await get_pg()
     if not pool:
@@ -115,7 +119,7 @@ async def save_playbook_execution(
 
     try:
         async with pool.acquire() as conn:
-            # Vérifier que alert_id existe dans alerts avant d'utiliser la FK
+            # Vérifier que alert_id est un UUID valide et existe dans alerts
             pg_alert_id = None
             if alert_id:
                 try:
@@ -131,14 +135,15 @@ async def save_playbook_execution(
                 """INSERT INTO playbook_executions
                    (playbook_id, execution_mode, target_value, status,
                     result, parameters_used, alert_id, completed_at)
-                   VALUES ($1::uuid, $2::exec_mode, $3, 'success',
-                           $4::jsonb, $5::jsonb,
-                           $6::uuid, NOW())""",
-                playbook_id, execution_mode, target_value,
+                   VALUES ($1::uuid, $2::exec_mode, $3, $4,
+                           $5::jsonb, $6::jsonb,
+                           $7::uuid, NOW())""",
+                playbook_id, execution_mode, target_value, pg_status,
                 json.dumps(result), json.dumps(parameters_used),
                 pg_alert_id,
             )
-            logger.info("Exécution SOAR sauvegardée : %s → %s", playbook_id, target_value)
-        await increment_execution_count(playbook_id)
+            logger.info("Exécution SOAR sauvegardée : %s → %s [%s]", playbook_id, target_value, pg_status)
+        if pg_status == "success":
+            await increment_execution_count(playbook_id)
     except Exception as exc:
         logger.warning("save_playbook_execution PG échoué (non bloquant) : %s", exc)

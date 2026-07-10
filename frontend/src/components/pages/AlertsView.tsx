@@ -120,7 +120,7 @@ export default function AlertsView({ activeRole, setActiveModule }: AlertsViewPr
     setSoarLoading(true);
     try {
       await api.triggerSoar(selectedId);
-      showToast("IP bloquée sur pfSense");
+      showToast("IP bloquée");
     } catch (err) {
       console.error("Erreur SOAR trigger", err);
       showToast("Erreur lors du déclenchement SOAR", "error");

@@ -48,4 +48,13 @@ class Playbook1BlockIP(BasePlaybook):
             return {"status": "success", "action": "block_ip", "ip": ip, "playbook": "1"}
         except Exception as exc:
             logger.error("Playbook1 — erreur blocage %s : %s", ip, exc)
+            await save_playbook_execution(
+                playbook_id=_PLAYBOOK_ID,
+                execution_mode="AUTO",
+                target_value=ip,
+                result={"status": "error", "action": "block_ip", "ip": ip, "erreur": str(exc)},
+                parameters_used={"blocked_ip": ip, "firewall": "pfSense", "action": "block_ip"},
+                alert_id=alert_id,
+                status="failed",
+            )
             return {"status": "error", "erreur": str(exc)}
