@@ -6,7 +6,10 @@ from datetime import datetime
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 
+from soar.db import save_playbook_execution
 from soar.playbooks.base_playbook import BasePlaybook
+
+_PLAYBOOK_ID = "00000001-0000-0003-0000-000000000001"
 
 logger = logging.getLogger(__name__)
 
@@ -36,6 +39,26 @@ class Playbook3Escalate(BasePlaybook):
             "Playbook3 — escalade : alert_id=%s level=%s email=%s",
             alert_id, level, email_result,
         )
+
+        await save_playbook_execution(
+            playbook_id=_PLAYBOOK_ID,
+            execution_mode="AUTO",
+            target_value=", ".join(source_ips) if source_ips else alert_id,
+            result={
+                "status": "success",
+                "action": "notify_escalation",
+                "email_sent": email_result,
+                "level": level,
+            },
+            parameters_used={
+                "action": "notify_escalation",
+                "level": level,
+                "rule_name": rule_name,
+                "email_sent": email_result,
+            },
+            alert_id=alert_id if alert_id != "unknown" else None,
+        )
+
         return {
             "status": "success",
             "action": "escalate",

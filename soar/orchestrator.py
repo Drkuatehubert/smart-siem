@@ -64,9 +64,24 @@ async def handle_alert(alert: dict) -> dict:
         r3 = await Playbook3Escalate().execute(alert)
         resultats.append(r3)
 
-    # Playbook 1 — Blocage IP sur brute-force et scan
     rule_key = rule_id or alert.get("rule_name", "")
-    if rule_key in _BRUTE_FORCE_RULES or "T1110" in rule_key or "brute" in rule_key.lower() or "Brute" in rule_key:
+    rule_name = alert.get("rule_name", "")
+
+    # Déterminer une fois si c'est un brute-force Windows (→ PB2, pas PB1)
+    is_windows_bf = (
+        rule_key in _WINDOWS_BRUTE_FORCE
+        or any(k in rule_name for k in _WINDOWS_BRUTE_FORCE)
+        or "windows_login_failed" in str(alert.get("conditions", ""))
+        or "windows_login_failed" in str(alert.get("event_action", ""))
+    )
+
+    # Playbook 1 — Blocage IP (SSH/RDP/réseau uniquement — pas les logins Windows locaux)
+    if not is_windows_bf and (
+        rule_key in _BRUTE_FORCE_RULES
+        or "T1110" in rule_key
+        or "brute" in rule_key.lower()
+        or "Brute" in rule_key
+    ):
         source_ips = alert.get("source_ips", [])
         ip_to_block = alert.get("source_ip") or (source_ips[0] if source_ips else "")
         if not _is_safe_to_block(ip_to_block):
@@ -82,13 +97,7 @@ async def handle_alert(alert: dict) -> dict:
         resultats.append(r2)
 
     # Playbook 2 — Brute force Windows : désactiver le compte, pas bloquer l'IP
-    rule_name = alert.get("rule_name", "")
-    if (
-        rule_key in _WINDOWS_BRUTE_FORCE
-        or any(k in rule_name for k in _WINDOWS_BRUTE_FORCE)
-        or "windows_login_failed" in str(alert.get("conditions", ""))
-        or "windows_login_failed" in str(alert.get("event_action", ""))
-    ):
+    if is_windows_bf:
         username = (
             alert.get("username")
             or (alert.get("usernames", [None])[0] if alert.get("usernames") else None)

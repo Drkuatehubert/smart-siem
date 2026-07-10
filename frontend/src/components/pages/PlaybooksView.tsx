@@ -223,6 +223,8 @@ export default function PlaybooksView({ activeRole }: PlaybooksViewProps) {
   useEffect(() => {
     loadPlaybooks();
     loadHistory();
+    const interval = setInterval(loadHistory, 30_000);
+    return () => clearInterval(interval);
   }, [loadPlaybooks, loadHistory]);
 
   // ── Actions ──────────────────────────────────────────────────────────────────

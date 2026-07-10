@@ -67,4 +67,13 @@ class Playbook2DisableAccount(BasePlaybook):
             }
         except Exception as exc:
             logger.error("Playbook2 — erreur désactivation '%s' : %s", username, exc)
+            await save_playbook_execution(
+                playbook_id=_PLAYBOOK_ID,
+                execution_mode="CONFIRM",
+                target_value=username,
+                result={"status": "error", "action": "disable_account", "username": username, "erreur": str(exc)},
+                parameters_used={"username": username, "action": "disable_account"},
+                alert_id=alert_id if alert_id != "unknown" else None,
+                status="failed",
+            )
             return {"status": "error", "erreur": str(exc)}
