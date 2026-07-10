@@ -79,8 +79,8 @@ async def handle_alert(alert: dict) -> dict:
     if not is_windows_bf and (
         rule_key in _BRUTE_FORCE_RULES
         or "T1110" in rule_key
-        or "brute" in rule_key.lower()
-        or "Brute" in rule_key
+        or "Brute" in rule_name.lower() or "brute" in rule_name.lower()
+        or "Brute" in rule_name
     ):
         source_ips = alert.get("source_ips", [])
         ip_to_block = alert.get("source_ip") or (source_ips[0] if source_ips else "")

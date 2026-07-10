@@ -124,7 +124,7 @@ def _is_filtered_ip(ip: str) -> bool:
     """Retourne True pour les IPs internes/APIPA qui ne doivent pas être indexées."""
     return (
         ip.startswith("169.254.") or
-        ip in ("127.0.0.1", "::1", "0.0.0.0")
+        ip in ("127.0.0.1", "127.0.1.1", "::1", "0.0.0.0")
     )
 
 def extraire_ip_source(message: str, fallback: str) -> Optional[str]:
@@ -228,6 +228,11 @@ def extraire_action(message: str) -> Optional[str]:
 
     # ── Windows EventIDs ──────────────────────────────────────────────────────
     if "eventid 4625" in msg or "échec de connexion" in msg:
+        code_match = re.search(r'0xc[0-9a-f]{7}', message, re.IGNORECASE)
+        code = code_match.group(0).lower() if code_match else ""
+        benign_codes = {"0xc0000072", "0xc000006e", "0xc0000234", "0xc0000193", "0xc0000070"}
+        if code in benign_codes:
+            return None
         return "windows_login_failed"
     if "eventid 4624" in msg or "connexion réussie" in msg:
         m = re.search(r'0x3e7\s*\|\s*(\d+)\s*\|', message)
