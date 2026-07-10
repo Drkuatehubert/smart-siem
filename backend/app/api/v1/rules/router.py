@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends
 
-from app.api.v1.rules.schemas import RuleCreate, RuleListResponse
-from app.api.v1.rules.service import create_rule, delete_rule, list_rules, toggle_rule
+from app.api.v1.rules.schemas import RuleCreate, RuleListResponse, RuleUpdate
+from app.api.v1.rules.service import create_rule, delete_rule, list_rules, toggle_rule, update_rule
 from app.core.rbac import require_admin, require_permission, require_analyste
 
 router = APIRouter(prefix="/rules", tags=["Règles de Corrélation"])
@@ -24,6 +24,11 @@ async def create(body: RuleCreate, current_user=Depends(require_admin)):
 @router.patch("/{rule_id}/toggle")
 async def toggle(rule_id: str, _=Depends(require_analyste)):
     return await toggle_rule(rule_id)
+
+
+@router.patch("/{rule_id}")
+async def update(rule_id: str, body: RuleUpdate, _=Depends(require_analyste)):
+    return await update_rule(rule_id, body.model_dump(exclude_none=True))
 
 
 @router.delete("/{rule_id}", status_code=204)

@@ -88,6 +88,61 @@ async def toggle_rule(rule_id: str) -> dict:
     return _fix_jsonb(serialize_row(row))
 
 
+async def update_rule(rule_id: str, data: dict) -> dict:
+    from fastapi import HTTPException
+    import json as _json2
+
+    _COL_MAP = {
+        "name":                ("name",                None),
+        "description":         ("description",         None),
+        "rule_type":           ("rule_type",           None),
+        "conditions":          ("conditions",          "jsonb"),
+        "time_window_seconds": ("time_window_seconds", None),
+        "threshold_count":     ("threshold_count",     None),
+        "alert_level":         ("alert_level",         "alert_level"),
+        "confidence_score":    ("confidence_score",    None),
+        "mitre_tactic":        ("mitre_tactic",        None),
+        "mitre_technique":     ("mitre_technique",     None),
+        "is_active":           ("is_active",           None),
+    }
+
+    set_clauses, values = [], []
+    idx = 1
+    for key, (col, cast) in _COL_MAP.items():
+        if key not in data or data[key] is None:
+            continue
+        val = data[key]
+        if col == "alert_level":
+            val = str(val).upper()
+        if cast:
+            set_clauses.append(f"{col} = ${idx}::{cast}")
+        else:
+            set_clauses.append(f"{col} = ${idx}")
+        values.append(val)
+        idx += 1
+
+    if not set_clauses:
+        raise HTTPException(status_code=400, detail="Aucun champ à modifier")
+
+    values.append(rule_id)
+    sql = (
+        f"UPDATE correlation_rules SET {', '.join(set_clauses)}, updated_at = NOW() "
+        f"WHERE id = ${idx}::uuid "
+        f"RETURNING id, name, description, rule_type, conditions, "
+        f"time_window_seconds, threshold_count, "
+        f"alert_level::text AS alert_level, confidence_score, "
+        f"mitre_tactic, mitre_technique, is_active, created_by, "
+        f"false_positive_count, trigger_count"
+    )
+
+    pool = await get_pg_pool()
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow(sql, *values)
+    if row is None:
+        raise HTTPException(status_code=404, detail="Règle introuvable")
+    return _fix_jsonb(serialize_row(row))
+
+
 async def delete_rule(rule_id: str) -> None:
     pool = await get_pg_pool()
     async with pool.acquire() as conn:

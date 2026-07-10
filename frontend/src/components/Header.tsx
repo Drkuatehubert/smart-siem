@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import {
   Sun,
   Moon,
@@ -69,16 +69,26 @@ export default function Header({
     }[]
   >([]);
 
-  useEffect(() => {
+  const fetchNotifications = useCallback(() => {
     api
       .getAlerts()
       .then((alerts) => {
-        setNotificationsList(
-          alerts
+        setNotificationsList((prev) => {
+          const prevIds = new Set(prev.map((n) => n.id));
+          const dismissed = JSON.parse(
+            localStorage.getItem("siem_dismissed_notifications") || "[]"
+          ) as string[];
+          const dismissedSet = new Set(dismissed);
+          const clearedTs = parseInt(
+            localStorage.getItem("siem_cleared_notifications") || "0",
+            10
+          );
+
+          const next = alerts
             .filter((alert) => {
-              if (dismissedIds.has(alert.id)) return false;
+              if (dismissedSet.has(alert.id)) return false;
               const ms = new Date(alert.triggered_at).getTime();
-              if (ms <= clearedBefore) return false;
+              if (ms <= clearedTs) return false;
               return true;
             })
             .slice(0, 8)
@@ -90,12 +100,24 @@ export default function Header({
               triggeredMs: new Date(alert.triggered_at).getTime(),
               type: alert.level,
               targetModule: "alerts" as ModuleID,
-            })),
-        );
+            }));
+
+          // Jouer un signal visuel uniquement si de nouvelles alertes apparaissent
+          const hasNew = next.some((n) => !prevIds.has(n.id));
+          if (hasNew && prevIds.size > 0) {
+            // Forcer une mise à jour du badge (le state change suffit)
+          }
+          return next;
+        });
       })
-      .catch(() => setNotificationsList([]));
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+      .catch(() => {});
   }, []);
+
+  useEffect(() => {
+    fetchNotifications();
+    const interval = setInterval(fetchNotifications, 30_000);
+    return () => clearInterval(interval);
+  }, [fetchNotifications]);
 
   const handleDismiss = (id: string, e: React.MouseEvent) => {
     e.stopPropagation();

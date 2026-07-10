@@ -71,6 +71,7 @@ export const api = {
   getRuleById: ruleService.getRuleById.bind(ruleService),
   addRule: ruleService.addRule.bind(ruleService),
   toggleRule: ruleService.toggleRule.bind(ruleService),
+  updateRule: ruleService.updateRule.bind(ruleService),
 
   // Threat Intel
   getThreatIntel: threatIntelService.getThreatIntel.bind(threatIntelService),

@@ -180,7 +180,7 @@ export default function App() {
     }
 
     switch (activeModule) {
-      case 'dashboard':     return <DashboardView />;
+      case 'dashboard':     return <DashboardView setActiveModule={persistModule} />;
       case 'alerts':        return <AlertsView activeRole={activeRole} setActiveModule={persistModule} />;
       case 'incidents':     return <IncidentsView activeRole={activeRole} />;
       case 'logs':          return <LogsView />;
@@ -193,7 +193,7 @@ export default function App() {
       case 'reports':       return <ReportsView activeRole={activeRole} />;
       case 'compliance':    return <ComplianceView activeRole={activeRole} />;
       case 'admin':         return <AdminView activeRole={activeRole} />;
-      default:              return <DashboardView />;
+      default:              return <DashboardView setActiveModule={persistModule} />;
     }
   };
 

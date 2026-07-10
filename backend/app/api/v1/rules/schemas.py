@@ -14,6 +14,20 @@ class RuleCreate(BaseModel):
     active: bool = True
 
 
+class RuleUpdate(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    rule_type: Optional[str] = None
+    conditions: Optional[Dict[str, Any]] = None
+    time_window_seconds: Optional[int] = None
+    threshold_count: Optional[int] = None
+    alert_level: Optional[str] = None
+    confidence_score: Optional[int] = None
+    mitre_tactic: Optional[str] = None
+    mitre_technique: Optional[str] = None
+    is_active: Optional[bool] = None
+
+
 class RuleOut(BaseModel):
     """Schéma de sortie aligné sur les colonnes PostgreSQL de correlation_rules."""
     id: str

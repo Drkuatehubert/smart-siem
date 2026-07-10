@@ -79,7 +79,13 @@ function writeCache(data: Omit<DashboardCache, "ts">) {
 
 // ─────────────────────────────────────────────────────────────────────────────
 
-export default function DashboardView() {
+import type { ModuleID } from "../../utils/rbac";
+
+interface DashboardViewProps {
+  setActiveModule: (m: ModuleID) => void;
+}
+
+export default function DashboardView({ setActiveModule }: DashboardViewProps) {
   const [logs, setLogs] = useState<LogEvent[]>([]);
   const [incidents, setIncidents] = useState<Incident[]>([]);
   const [agents, setAgents] = useState<EndpointAgent[]>([]);
@@ -460,7 +466,10 @@ export default function DashboardView() {
             <h4 className="font-bold text-sm text-slate-900 dark:text-slate-100">
               Incidents Actifs Recents
             </h4>
-            <span className="text-xs text-blue-500 hover:underline cursor-pointer flex items-center gap-1">
+            <span
+              onClick={() => setActiveModule("incidents")}
+              className="text-xs text-blue-500 hover:underline cursor-pointer flex items-center gap-1"
+            >
               <span>Voir tout</span>
               <ArrowRight className="w-3.5 h-3.5" />
             </span>

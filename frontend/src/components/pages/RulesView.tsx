@@ -14,6 +14,7 @@ import {
   AlertTriangle,
   Lock,
   X,
+  Pencil,
 } from "lucide-react";
 import api from "../../Services/api";
 import type {
@@ -33,8 +34,9 @@ export default function RulesView({ activeRole }: RulesViewProps) {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
 
-  // Create rule form states
+  // Modal state — null = créer, rule = modifier
   const [showModal, setShowModal] = useState(false);
+  const [editingRule, setEditingRule] = useState<CorrelationRule | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formError, setFormError] = useState("");
 
@@ -77,13 +79,28 @@ export default function RulesView({ activeRole }: RulesViewProps) {
     }
   };
 
-  // ✅ Fonction de création de règle améliorée avec validation
-  const handleCreateRule = async (e: React.FormEvent) => {
+  const openEditModal = (rule: CorrelationRule) => {
+    setEditingRule(rule);
+    setName(rule.name);
+    setDescription(rule.description || "");
+    setRuleType(rule.rule_type);
+    setConditions(JSON.stringify(rule.conditions, null, 2));
+    setTimeWindowSeconds(rule.time_window_seconds?.toString() ?? "");
+    setThresholdCount(rule.threshold_count?.toString() ?? "");
+    setAlertLevel(rule.alert_level);
+    setConfidenceScore(rule.confidence_score?.toString() ?? "75");
+    setMitreTactic(rule.mitre_tactic ?? "");
+    setMitreTechnique(rule.mitre_technique ?? "");
+    setPlaybookId(rule.playbook_id ?? "");
+    setFormError("");
+    setShowModal(true);
+  };
+
+  const handleSubmitRule = async (e: React.FormEvent) => {
     e.preventDefault();
     setFormError("");
     setIsSubmitting(true);
 
-    // ✅ Validations
     if (!name.trim()) {
       setFormError("Le nom de la règle est obligatoire.");
       setIsSubmitting(false);
@@ -100,42 +117,51 @@ export default function RulesView({ activeRole }: RulesViewProps) {
     }
 
     try {
-      const newRule = await api.addRule(
-        {
+      if (editingRule) {
+        // ── Mode édition ──────────────────────────────────────────────────────
+        const updated = await api.updateRule(editingRule.id, {
           name: name.trim(),
           description: description.trim() || "Aucune description",
           rule_type: ruleType,
           conditions: parsedConditions,
-          time_window_seconds: timeWindowSeconds
-            ? parseInt(timeWindowSeconds, 10)
-            : undefined,
-          threshold_count: thresholdCount
-            ? parseInt(thresholdCount, 10)
-            : undefined,
-          alert_level: alertLevel,
-          confidence_score: parseInt(confidenceScore, 10) || 0,
-          mitre_tactic: mitreTactic.trim() || undefined,
-          mitre_technique: mitreTechnique.trim() || undefined,
-          playbook_id: playbookId.trim() || undefined,
-          is_active: true,
-        },
-        "Dominique",
-        activeRole,
-      );
+          time_window_seconds: timeWindowSeconds ? parseInt(timeWindowSeconds, 10) : undefined,
+          threshold_count:     thresholdCount    ? parseInt(thresholdCount, 10)    : undefined,
+          alert_level:         alertLevel,
+          confidence_score:    parseInt(confidenceScore, 10) || 0,
+          mitre_tactic:        mitreTactic.trim()    || undefined,
+          mitre_technique:     mitreTechnique.trim() || undefined,
+        });
+        setRules((prev) => prev.map((r) => (r.id === updated.id ? updated : r)));
+      } else {
+        // ── Mode création ─────────────────────────────────────────────────────
+        const newRule = await api.addRule(
+          {
+            name: name.trim(),
+            description: description.trim() || "Aucune description",
+            rule_type: ruleType,
+            conditions: parsedConditions,
+            time_window_seconds: timeWindowSeconds ? parseInt(timeWindowSeconds, 10) : undefined,
+            threshold_count:     thresholdCount    ? parseInt(thresholdCount, 10)    : undefined,
+            alert_level:         alertLevel,
+            confidence_score:    parseInt(confidenceScore, 10) || 0,
+            mitre_tactic:        mitreTactic.trim()    || undefined,
+            mitre_technique:     mitreTechnique.trim() || undefined,
+            playbook_id:         playbookId.trim()     || undefined,
+            is_active:           true,
+          },
+          "Dominique",
+          activeRole,
+        );
+        setRules((prev) => [newRule, ...prev]);
+      }
 
-      // ✅ Ajouter la nouvelle règle en haut de la liste
-      setRules((prev) => [newRule, ...prev]);
-
-      // ✅ Réinitialiser le formulaire
       resetForm();
+      setEditingRule(null);
       setShowModal(false);
-      setFormError("");
     } catch (err: unknown) {
-      console.error("Erreur création de règle", err);
+      console.error("Erreur règle", err);
       setFormError(
-        err instanceof Error
-          ? err.message
-          : "Erreur lors de la création de la règle. Veuillez réessayer.",
+        err instanceof Error ? err.message : "Erreur lors de l'enregistrement.",
       );
     } finally {
       setIsSubmitting(false);
@@ -340,16 +366,26 @@ export default function RulesView({ activeRole }: RulesViewProps) {
                     </div>
 
                     {canEdit ? (
-                      <button
-                        onClick={() => handleToggle(rule.id)}
-                        className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                          rule.is_active
-                            ? "bg-rose-500/10 text-rose-500 border border-rose-500/20 hover:bg-rose-500 hover:text-white"
-                            : "bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 hover:bg-emerald-500 hover:text-white"
-                        }`}
-                      >
-                        {rule.is_active ? "Désactiver" : "Activer"}
-                      </button>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => openEditModal(rule)}
+                          className="px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer bg-blue-500/10 text-blue-500 border border-blue-500/20 hover:bg-blue-500 hover:text-white flex items-center gap-1"
+                          title="Modifier la règle"
+                        >
+                          <Pencil className="w-3 h-3" />
+                          Modifier
+                        </button>
+                        <button
+                          onClick={() => handleToggle(rule.id)}
+                          className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                            rule.is_active
+                              ? "bg-rose-500/10 text-rose-500 border border-rose-500/20 hover:bg-rose-500 hover:text-white"
+                              : "bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 hover:bg-emerald-500 hover:text-white"
+                          }`}
+                        >
+                          {rule.is_active ? "Désactiver" : "Activer"}
+                        </button>
+                      </div>
                     ) : (
                       <div className="flex items-center gap-1 text-[10px] text-slate-400 font-bold uppercase font-mono bg-slate-100 dark:bg-slate-900 px-2 py-1 rounded">
                         <Lock className="w-3 h-3" />
@@ -380,12 +416,19 @@ export default function RulesView({ activeRole }: RulesViewProps) {
           <div className="bg-white dark:bg-[#1E293B] w-full max-w-lg rounded-xl border border-slate-200 dark:border-slate-800 shadow-2xl p-6 space-y-4 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800/60 pb-3">
               <h4 className="font-bold text-sm text-slate-900 dark:text-slate-100 flex items-center gap-2">
-                <Shield className="w-4 h-4 text-blue-500" />
-                <span>Nouvelle règle de corrélation</span>
+                {editingRule ? (
+                  <Pencil className="w-4 h-4 text-blue-500" />
+                ) : (
+                  <Shield className="w-4 h-4 text-blue-500" />
+                )}
+                <span>
+                  {editingRule ? "Modifier la règle" : "Nouvelle règle de corrélation"}
+                </span>
               </h4>
               <button
                 onClick={() => {
                   setShowModal(false);
+                  setEditingRule(null);
                   resetForm();
                   setFormError("");
                 }}
@@ -403,7 +446,7 @@ export default function RulesView({ activeRole }: RulesViewProps) {
               </div>
             )}
 
-            <form onSubmit={handleCreateRule} className="space-y-3">
+            <form onSubmit={handleSubmitRule} className="space-y-3">
               <div className="space-y-1">
                 <label className="text-[10px] font-bold font-mono text-slate-450 uppercase">
                   Nom de la règle <span className="text-red-500">*</span>
@@ -585,6 +628,7 @@ export default function RulesView({ activeRole }: RulesViewProps) {
                   type="button"
                   onClick={() => {
                     setShowModal(false);
+                    setEditingRule(null);
                     resetForm();
                     setFormError("");
                   }}
@@ -604,7 +648,7 @@ export default function RulesView({ activeRole }: RulesViewProps) {
                       <span>Enregistrement...</span>
                     </>
                   ) : (
-                    <span>Enregistrer la règle</span>
+                    <span>{editingRule ? "Mettre à jour" : "Enregistrer la règle"}</span>
                   )}
                 </button>
               </div>

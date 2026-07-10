@@ -9,6 +9,12 @@ logger = logging.getLogger(__name__)
 
 _BRUTE_FORCE_RULES = {"brute_force_ssh", "brute_force_rdp", "port_scan", "T1110", "T1046"}
 _EXFIL_RULES = {"exfiltration", "dormant_account", "ueba_critical", "T1041", "T1078"}
+_WINDOWS_BRUTE_FORCE = {
+    "windows_login_failed",
+    "Brute Force Compte Windows",
+    "Brute Force Compte Windows (MITRE T1110)",
+    "windows_brute_force",
+}
 
 # IPs que l'on ne bloque jamais (loopback, SIEM interne, non-routable)
 _BLOCKED_PREFIXES = ("127.", "0.", "169.254.")
@@ -74,6 +80,34 @@ async def handle_alert(alert: dict) -> dict:
     if rule_id in _EXFIL_RULES:
         r2 = await Playbook2DisableAccount().execute(alert)
         resultats.append(r2)
+
+    # Playbook 2 — Brute force Windows : désactiver le compte, pas bloquer l'IP
+    rule_name = alert.get("rule_name", "")
+    if (
+        rule_key in _WINDOWS_BRUTE_FORCE
+        or any(k in rule_name for k in _WINDOWS_BRUTE_FORCE)
+        or "windows_login_failed" in str(alert.get("conditions", ""))
+        or "windows_login_failed" in str(alert.get("event_action", ""))
+    ):
+        username = (
+            alert.get("username")
+            or (alert.get("usernames", [None])[0] if alert.get("usernames") else None)
+        )
+        if username and username not in ("SYSTEM", "system_root", "anonymous", "-", ""):
+            logger.info(
+                "Playbook2 Windows brute-force — désactivation compte : %s", username
+            )
+            r2w = await Playbook2DisableAccount().execute({**alert, "username": username})
+            resultats.append(r2w)
+        else:
+            logger.warning(
+                "Playbook2 Windows ignoré — username absent ou système : %s", username
+            )
+            resultats.append({
+                "status": "skipped",
+                "reason": "username absent ou compte système",
+                "playbook": "2",
+            })
 
     result = {"alert_id": alert_id, "playbooks_executed": resultats}
     logger.info("Orchestrateur — résultat : %s", result)

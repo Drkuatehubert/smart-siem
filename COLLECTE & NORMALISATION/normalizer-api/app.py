@@ -60,7 +60,7 @@ class LogBrut(BaseModel):
 class LogNormalise(BaseModel):
     id_es:            str
     horodatage:       str
-    ip_source:        str
+    ip_source:        Optional[str]
     ip_destination:   Optional[str]
     hote:             str
     type_log:         str
@@ -120,20 +120,36 @@ def deduire_type_log(message: str) -> str:
 
     return "application"
 
-def extraire_ip_source(message: str, fallback: str) -> str:
+def _is_filtered_ip(ip: str) -> bool:
+    """Retourne True pour les IPs internes/APIPA qui ne doivent pas être indexées."""
+    return (
+        ip.startswith("169.254.") or
+        ip in ("127.0.0.1", "::1", "0.0.0.0")
+    )
+
+def extraire_ip_source(message: str, fallback: str) -> Optional[str]:
     # Linux SSH : "from X.X.X.X"
     m = re.search(r'from\s+(\d{1,3}(?:\.\d{1,3}){3})', message)
     if m:
-        return m.group(1)
+        ip = m.group(1)
+        if not _is_filtered_ip(ip):
+            return ip
     # NetworkManager : "address=X.X.X.X"
     m = re.search(r'address=(\d{1,3}(?:\.\d{1,3}){3})', message)
     if m:
-        return m.group(1)
-    # Windows Event Log : "::1" ou IP dans les StringInserts
+        ip = m.group(1)
+        if not _is_filtered_ip(ip):
+            return ip
+    # Windows Event Log : IP dans les StringInserts
     m = re.search(r'(\d{1,3}(?:\.\d{1,3}){3})(?:\s*\|\s*\d+\s*\|\s*\d+)?$', message)
-    if m and m.group(1) not in ("0.0.0.0", "127.0.0.1"):
-        return m.group(1)
-    return fallback or "unknown"
+    if m:
+        ip = m.group(1)
+        if not _is_filtered_ip(ip):
+            return ip
+    # Fallback (host source)
+    if fallback and fallback != "unknown" and not _is_filtered_ip(fallback):
+        return fallback
+    return None
 
 def extraire_ip_destination(message: str) -> Optional[str]:
     # Pattern "to X.X.X.X"
@@ -212,7 +228,7 @@ def extraire_action(message: str) -> Optional[str]:
 
     # ── Windows EventIDs ──────────────────────────────────────────────────────
     if "eventid 4625" in msg or "échec de connexion" in msg:
-        return "login_failed"
+        return "windows_login_failed"
     if "eventid 4624" in msg or "connexion réussie" in msg:
         m = re.search(r'0x3e7\s*\|\s*(\d+)\s*\|', message)
         if m:

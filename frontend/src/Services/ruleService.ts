@@ -68,4 +68,28 @@ export class RuleService extends BaseService {
     );
     return mapRule(row);
   }
+
+  async updateRule(
+    id: string,
+    data: {
+      name?: string;
+      description?: string;
+      rule_type?: RuleType;
+      conditions?: Record<string, unknown>;
+      time_window_seconds?: number;
+      threshold_count?: number;
+      alert_level?: SeverityLevel;
+      confidence_score?: number;
+      mitre_tactic?: string;
+      mitre_technique?: string;
+      is_active?: boolean;
+    },
+  ): Promise<CorrelationRule> {
+    const row = await this.request<Record<string, unknown>>(
+      "PATCH",
+      `/rules/${id}`,
+      data,
+    );
+    return mapRule(row);
+  }
 }
